@@ -17,7 +17,7 @@ ui <- dashboardPage(
   )
 )
 ###  
-   dashboardBody(
+  dashboardBody(
     tabItems(
   skin = "green",
   dashboardHeader(title = "Dermatose nodulaire bovine"),
@@ -27,11 +27,10 @@ ui <- dashboardPage(
       menuItem("Vue d'ensemble", tabName = "ensemble", icon = icon("dashboard")),
       menuItem("Analyse", tabName = "analyse", icon = icon("dashboard")),
       menuItem("Rapport", tabName = "rapport", icon = icon("dashboard"))
-      )
+      ))
     ),
    dashboardBody(
     fluidRow(tabItems(
->>>>>>> e3eeeef3d0160178c31d89d8c48aeb7c6088352c
       tabItem(tabName = "données",
         fluidRow(column(3 ,align ="center"),
           box(status = "success",width = 6, solidHeader = TRUE, fileInput(inputId = "data", label = "Charger vos données ici")))),
@@ -48,7 +47,6 @@ ui <- dashboardPage(
         box(status = "info",width = 6, solidHeader = TRUE, tableOutput(outputId = "summary"), plotOutput(outputId = "plot", inline = TRUE))),
               
       tabItem(tabName = "rapport",
-<<<<<<< HEAD
           textOutput(outputId = "report"),
           radioButtons('format', 'Format du document', c('PDF', 'HTML', 'Word'), inline = TRUE),
           downloadButton(outputId = "download", label = "Télécharger")),
@@ -57,11 +55,10 @@ ui <- dashboardPage(
         fluidPage(
           uiOutput('markdown')
         )
-    )))
-=======
-              radioButtons('format', 'Format du document', c('PDF', 'HTML', 'Word'), inline = TRUE),
-              downloadButton(outputId = "download", label = "Télécharger")))))
->>>>>>> e3eeeef3d0160178c31d89d8c48aeb7c6088352c
+    )),
+          radioButtons('format', 'Format du document', c('PDF', 'HTML', 'Word'), inline = TRUE),
+          downloadButton(outputId = "download", label = "Télécharger"))))
+
 
 server <- function(input, output) {
   output$summary <- renderTable({
