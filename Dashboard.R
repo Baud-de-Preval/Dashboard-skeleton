@@ -4,20 +4,24 @@ library(shinydashboard)
 library(ggplot2)
 
 ui <- dashboardPage(
-  skin = "red", 
-  dashboardHeader(title = "Visualisation des données brutes", titleWidth = 400),
+  skin = "green", 
+  dashboardHeader(title = "Visualisation des données brutes", titleWidth = 300),
   dashboardSidebar(
-    menuItem("Importation des données", tabName = "data", icon = icon("glyphicon glyphicon-floppy-open")),
-    menuItem("Données brutes", tabName = "raw", icon = icon("glyphicon glyphicon-stats"))
+    menuItem("Importation des données", tabName = "data", icon = icon("file")),
+    menuItem("Données brutes", tabName = "raw", icon = icon("bar-chart"))
   ),
 
   dashboardBody(
+    tabItem("data",
     fluidRow(
-      box(status = "success",width = 6, solidHeader = TRUE, fileInput(inputId = "RNA-seq", label = "Charger vos données ici", accept = ".txt")),
-      checkboxInput("header", "Header", TRUE),
+      box(status = "success",width = 6, solidHeader = TRUE, fileInput(inputId = "file", label = "Charger vos données ici", accept = c(".txt","text/csv",
+                                                                                                                                                  "text/comma-separated-values,text/plain",
+      tags$hr(),tags$hr(),                                                                                                                                            ".csv",".ods"))),
+      box(checkboxInput("header", "Header", TRUE)),
   
-      # Input: Select separator ----
-      radioButtons("sep", "Separator",
+    
+        # Input: Select separator ----
+      box(radioButtons("sep", "Separator",
                    choices = c(Comma = ",",
                                Semicolon = ";",
                                Tab = "\t"),
@@ -29,21 +33,55 @@ ui <- dashboardPage(
                                "Double Quote" = '"',
                                "Single Quote" = "'"),
                    selected = '"'),
+ 
+      radioButtons("disp", "Display",
+                   choices = c(Head = "head",
+                               All = "all"),
+                   selected = "head")
       
-      tableOutput("contents"),
-      
-      box(plotOutput(inputId = "Plot1", height = 300))
-  )))
+      ),
+      mainPanel(
+        tableOutput("contents")
+        
+      )
+  ))),
+      tabItem("raw",
+      fluidRow(box(tableOutput("data")
+          ))
+          ))
 
 server <- function(input, output) {
+
   output$contents <- renderTable({
-    req(head(input$RNA-seq))
+    
+    rep(head(input$file))
+    
+    
+    tryCatch(
+      {
+        df <- read.csv(input$file$datapath,
+                       header = input$header,
+                       sep = input$sep,
+                       quote = input$quote)
+      },
+      error = function(e) {
+        # return a safe Error if a parsing error occurs
+        stop(safeError(e))
+      }
+    )
+    
+    if(input$disp == "head") {
+      return(head(df))
+    }
+    else {
+      return(df)
+    }
   })
-  
-  
-  output$Plot1 <- renderPlot({
-    file <-input$RNA-seq
-  })
+
+      output$plot1 <- renderPlot({
+      ggplot(df, aes(x = df[1,1], y= df[0,1])) + theme(axis.text.x = element_text(face="bold", color="#997643",size=9, angle=32))
+    })
+
 }
 
 shinyApp(ui, server)
