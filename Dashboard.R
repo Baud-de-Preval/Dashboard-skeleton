@@ -15,10 +15,8 @@ ui <- dashboardPage(
     tabItem("data",
     fluidRow(
       box(status = "success",width = 6, solidHeader = TRUE, fileInput(inputId = "file", label = "Charger vos données ici", accept = c(".txt","text/csv",
-                                                                                                                                                  "text/comma-separated-values,text/plain",
-      tags$hr(),tags$hr(),                                                                                                                                            ".csv",".ods"))),
+              "text/comma-separated-values,text/plain",".csv",".ods"))),
       box(checkboxInput("header", "Header", TRUE)),
-  
     
         # Input: Select separator ----
       box(radioButtons("sep", "Separator",
@@ -40,10 +38,10 @@ ui <- dashboardPage(
                    selected = "head")
       
       ),
-      mainPanel(
-        tableOutput("contents")
+      fluidRow(column(2, align = "center", offset = 2, 
+        box(tableOutput("contents"), title = "Aperçu des données", status = "success", side = "left", width = NULL,soliderHeader = TRUE)
         
-      )
+      ))
   ))),
       tabItem("raw",
       fluidRow(box(tableOutput("data")
