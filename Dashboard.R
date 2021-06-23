@@ -3,59 +3,66 @@ library(shiny)
 library(shinydashboard)
 library(ggplot2)
 
+.theme<- theme(
+  axis.line = element_line(colour = 'gray', size = .75),
+  panel.background = element_blank(),
+  plot.background = element_blank()
+)
+
 ui <- dashboardPage(
   skin = "green", 
   dashboardHeader(title = "Visualisation des données brutes", titleWidth = 300),
-  dashboardSidebar(
+  dashboardSidebar(sidebarMenu(
     menuItem("Importation des données", tabName = "data", icon = icon("file")),
     menuItem("Données brutes", tabName = "raw", icon = icon("bar-chart"))
-  ),
+  )),
 
   dashboardBody(
-    tabItem("data",
-    fluidRow(
-      box(status = "success",width = 6, solidHeader = TRUE, fileInput(inputId = "file", label = "Charger vos données ici", accept = c(".txt","text/csv",
-              "text/comma-separated-values,text/plain",".csv",".ods"))),
-      box(checkboxInput("header", "Header", TRUE)),
-    
-        # Input: Select separator ----
-      box(radioButtons("sep", "Separator",
-                   choices = c(Comma = ",",
-                               Semicolon = ";",
-                               Tab = "\t"),
-                   selected = ","),
+    tabItems(
+      tabItem(tabName = "data",
+      fluidRow(
+        box(status = "success",width = 6, solidHeader = TRUE, fileInput(inputId = "file", label = "Charger vos données ici", accept = c(".txt","text/csv",
+                "text/comma-separated-values,text/plain",".csv",".ods"))),
+        box(tableOutput("contents"),width = 6, title = "Aperçu des données", status = "success", soliderHeader = TRUE, collapsible = T, collapsed = T),
+        box(checkboxInput("header", "Header", TRUE)),
       
-      # Input: Select quotes ----
-      radioButtons("quote", "Quote",
-                   choices = c(None = "",
-                               "Double Quote" = '"',
-                               "Single Quote" = "'"),
-                   selected = '"'),
- 
-      radioButtons("disp", "Display",
-                   choices = c(Head = "head",
-                               All = "all"),
-                   selected = "head")
-      
-      ),
-      fluidRow(column(2, align = "center", offset = 2, 
-        box(tableOutput("contents"), title = "Aperçu des données", status = "success", side = "left", width = NULL,soliderHeader = TRUE)
+          # Input: Select separator ----
+        box(radioButtons("sep", "Separator",
+                     choices = c(Comma = ",",
+                                 Semicolon = ";",
+                                 Tab = "\t"),
+                     selected = ","),
         
-      ))
-  ))),
-      tabItem("raw",
-      fluidRow(box(tableOutput("data")
-          ))
-          ))
+        # Input: Select quotes ----
+        radioButtons("quote", "Quote",
+                     choices = c(None = "",
+                                 "Double Quote" = '"',
+                                 "Single Quote" = "'"),
+                     selected = '"'),
+   
+        radioButtons("disp", "Display",
+                     choices = c(Head = "head"),
+                     selected = "head")
+        
+        ),
+      
+          
+    )),
+       
+     tabItem(tabName = "raw",
+      fluidRow(
+        box(plotOutput("graphe",click = "plot_click"),verbatimTextOutput("info"), title = "Visualisation des données", status = "success")
+          )
+      )
+  ))
+    )
 
-server <- function(input, output) {
-
-  output$contents <- renderTable({
+server <- shinyServer(function(input, output,session) {
+  tab <- reactive({ 
+    req(input$file)
+    inFile <- input$file
     
-    rep(head(input$file))
-    
-    
-    tryCatch(
+     tryCatch(
       {
         df <- read.csv(input$file$datapath,
                        header = input$header,
@@ -74,12 +81,26 @@ server <- function(input, output) {
     else {
       return(df)
     }
+    
+    updateSelectInput(session, inputId = 'xcol', label = 'X Variable',
+                      choices = names(df), selected = names(df))
+    updateSelectInput(session, inputId = 'ycol', label = 'Y Variable',
+                      choices = names(df), selected = names(df)[2])
+    
+    return(df)
   })
-
-      output$plot1 <- renderPlot({
-      ggplot(df, aes(x = df[1,1], y= df[0,1])) + theme(axis.text.x = element_text(face="bold", color="#997643",size=9, angle=32))
+  
+  output$contents <- renderTable({
+    
+    rep(head(tab()))
+    
     })
 
-}
+  output$graphe <- renderPlot({
+    pd <- input$file
+    pd1 <- ggplot(pd, mapping = aes(y = colnames(tab()[1]), x = colnames(tab()[2,])))  
+      print(pd1)
+    })
+})
 
 shinyApp(ui, server)
