@@ -2,6 +2,9 @@
 library(shiny)
 library(shinydashboard)
 library(ggplot2)
+library(knitr)
+library(magrittr)
+library(dplyr)
 
 .theme<- theme(
   axis.line = element_line(colour = 'gray', size = .75),
@@ -14,7 +17,9 @@ ui <- dashboardPage(
   dashboardHeader(title = "Visualisation des données brutes", titleWidth = 300),
   dashboardSidebar(sidebarMenu(
     menuItem("Importation des données", tabName = "data", icon = icon("file")),
-    menuItem("Données brutes", tabName = "raw", icon = icon("bar-chart"))
+    menuItem("Données brutes", tabName = "raw", icon = icon("bar-chart")),
+    menuItem("Code source", tabName = "source", icon = icon("code"))
+    # tags$img(class = "Image", src ="https://p4.wallpaperbetter.com/wallpaper/670/178/355/dna-spiral-genetics-twisted-wallpaper-preview.jpg")
   )),
 
   dashboardBody(
@@ -51,17 +56,23 @@ ui <- dashboardPage(
        
      tabItem(tabName = "raw",
       fluidRow(
-        box(plotOutput("graphe",click = "plot_click"),verbatimTextOutput("info"), title = "Visualisation des données", status = "success")
+        box(plotOutput("graphe",click = "plot_click"), title = "Visualisation des données", status = "success", tableOutput("rawData"))
           )
+      ),
+    
+    tabItem(tabName = "source",
+      fluidRow(
+        box( status = "success", title = "Récupérer les résultats", width =6, solidHeader = TRUE, downloadButton("rapport","Rapport"), align="center"),
+        box( status = "success", title = "Récupérer le code", width = 6, solidHeader = TRUE, uiOutput("code"), align="center")
       )
+            ))
   ))
-    )
+    
 
 server <- shinyServer(function(input, output,session) {
   tab <- reactive({ 
     req(input$file)
-    inFile <- input$file
-    
+
      tryCatch(
       {
         df <- read.csv(input$file$datapath,
@@ -81,26 +92,39 @@ server <- shinyServer(function(input, output,session) {
     else {
       return(df)
     }
-    
-    updateSelectInput(session, inputId = 'xcol', label = 'X Variable',
-                      choices = names(df), selected = names(df))
-    updateSelectInput(session, inputId = 'ycol', label = 'Y Variable',
-                      choices = names(df), selected = names(df)[2])
-    
-    return(df)
+
   })
   
   output$contents <- renderTable({
-    
     rep(head(tab()))
-    
     })
 
   output$graphe <- renderPlot({
-    pd <- input$file
-    pd1 <- ggplot(pd, mapping = aes(y = colnames(tab()[1]), x = colnames(tab()[2,])))  
-      print(pd1)
+    vars <- names(tab())
+    tab() %>% ggplot(tab(), mapping = aes(y = colSums(tab()[,1]), x =tab()[[2,]])) + geom_bar(position="dodge", stat="identity", fill="steelblue")
+       
     })
+  
+  url <- a("ici", href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Dashboard.R")
+  output$code <- renderUI({
+    tagList("Le lien vers le code :", url)
+  })
+  
+  output$rapport <- downloadHandler(
+    filename = "Rapport.html",
+    content = function(file) {
+      tempReport <- file.path(tempdir(), "Rapport.rmd")
+      file.copy("Rapport.rmd", tempReport, overwrite = TRUE)
+      # A compléter
+      params <- list(n = input$slider)
+    
+      rmarkdown::render(tempReport, output_file = file,
+                        params = params,
+                        envir = new.env(parent = globalenv())
+      )
+    }
+  )
+  
 })
 
 shinyApp(ui, server)
