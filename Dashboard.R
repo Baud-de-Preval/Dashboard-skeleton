@@ -26,7 +26,7 @@ ui <- dashboardPage(
     tabItems(
       tabItem(tabName = "data",
       fluidRow(
-        box(status = "success",width = 6, solidHeader = TRUE, fileInput(inputId = "file", label = "Charger vos données ici", accept = c(".txt","text/csv",
+        box(status = "success",width = 6, solidHeader = TRUE, fileInput(inputId = "file", label = "Charger vos données ici",multiple = TRUE, accept = c(".txt","text/csv",
                 "text/comma-separated-values,text/plain",".csv",".ods"))),
         box(tableOutput("contents"),width = 6, title = "Aperçu des données", status = "success", soliderHeader = TRUE, collapsible = T, collapsed = T),
         box(checkboxInput("header", "Header", TRUE)),
