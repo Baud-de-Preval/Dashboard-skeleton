@@ -2,48 +2,129 @@
 library(shiny)
 library(shinydashboard)
 library(ggplot2)
+library(knitr)
+library(magrittr)
+library(dplyr)
+
+.theme<- theme(
+  axis.line = element_line(colour = 'gray', size = .75),
+  panel.background = element_blank(),
+  plot.background = element_blank()
+)
 
 ui <- dashboardPage(
-  skin = "red", 
-  dashboardHeader(title = "Visualisation des données brutes", titleWidth = 400),
-  dashboardSidebar(
-    menuItem("Importation des données", tabName = "data", icon = icon("glyphicon glyphicon-floppy-open")),
-    menuItem("Données brutes", tabName = "raw", icon = icon("glyphicon glyphicon-stats"))
-  ),
+  skin = "green", 
+  dashboardHeader(title = "Visualisation des données brutes", titleWidth = 300),
+  dashboardSidebar(sidebarMenu(
+    menuItem("Importation des données", tabName = "data", icon = icon("file")),
+    menuItem("Données brutes", tabName = "raw", icon = icon("bar-chart")),
+    menuItem("Code source", tabName = "source", icon = icon("code"))
+    # tags$img(class = "Image", src ="https://p4.wallpaperbetter.com/wallpaper/670/178/355/dna-spiral-genetics-twisted-wallpaper-preview.jpg")
+  )),
 
   dashboardBody(
-    fluidRow(
-      box(status = "success",width = 6, solidHeader = TRUE, fileInput(inputId = "RNA-seq", label = "Charger vos données ici", accept = ".txt")),
-      checkboxInput("header", "Header", TRUE),
-  
-      # Input: Select separator ----
-      radioButtons("sep", "Separator",
-                   choices = c(Comma = ",",
-                               Semicolon = ";",
-                               Tab = "\t"),
-                   selected = ","),
+    tabItems(
+      tabItem(tabName = "data",
+      fluidRow(
+        box(status = "success",width = 6, solidHeader = TRUE, fileInput(inputId = "file", label = "Charger vos données ici",multiple = TRUE, accept = c(".txt","text/csv",
+                "text/comma-separated-values,text/plain",".csv",".ods"))),
+        box(tableOutput("contents"),width = 6, title = "Aperçu des données", status = "success", soliderHeader = TRUE, collapsible = T, collapsed = T),
+        box(checkboxInput("header", "Header", TRUE)),
       
-      # Input: Select quotes ----
-      radioButtons("quote", "Quote",
-                   choices = c(None = "",
-                               "Double Quote" = '"',
-                               "Single Quote" = "'"),
-                   selected = '"'),
+          # Input: Select separator ----
+        box(radioButtons("sep", "Separator",
+                     choices = c(Comma = ",",
+                                 Semicolon = ";",
+                                 Tab = "\t"),
+                     selected = ","),
+        
+        # Input: Select quotes ----
+        radioButtons("quote", "Quote",
+                     choices = c(None = "",
+                                 "Double Quote" = '"',
+                                 "Single Quote" = "'"),
+                     selected = '"'),
+   
+        radioButtons("disp", "Display",
+                     choices = c(Head = "head"),
+                     selected = "head")
+        
+        ),
       
-      tableOutput("contents"),
-      
-      box(plotOutput(inputId = "Plot1", height = 300))
-  )))
+          
+    )),
+       
+     tabItem(tabName = "raw",
+      fluidRow(
+        box(plotOutput("graphe",click = "plot_click"), title = "Visualisation des données", status = "success", tableOutput("rawData"))
+          )
+      ),
+    
+    tabItem(tabName = "source",
+      fluidRow(
+        box( status = "success", title = "Récupérer les résultats", width =6, solidHeader = TRUE, downloadButton("rapport","Rapport"), align="center"),
+        box( status = "success", title = "Récupérer le code", width = 6, solidHeader = TRUE, uiOutput("code"), align="center")
+      )
+            ))
+  ))
+    
 
-server <- function(input, output) {
+server <- shinyServer(function(input, output,session) {
+  tab <- reactive({ 
+    req(input$file)
+
+     tryCatch(
+      {
+        df <- read.csv(input$file$datapath,
+                       header = input$header,
+                       sep = input$sep,
+                       quote = input$quote)
+      },
+      error = function(e) {
+        # return a safe Error if a parsing error occurs
+        stop(safeError(e))
+      }
+    )
+    
+    if(input$disp == "head") {
+      return(head(df))
+    }
+    else {
+      return(df)
+    }
+
+  })
+  
   output$contents <- renderTable({
-    req(head(input$RNA-seq))
+    rep(head(tab()))
+    })
+
+  output$graphe <- renderPlot({
+    vars <- names(tab())
+    tab() %>% ggplot(tab(), mapping = aes(y = colSums(tab()[,1]), x =tab()[[2,]])) + geom_bar(position="dodge", stat="identity", fill="steelblue")
+       
+    })
+  
+  url <- a("ici", href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Dashboard.R")
+  output$code <- renderUI({
+    tagList("Le lien vers le code :", url)
   })
   
+  output$rapport <- downloadHandler(
+    filename = "Rapport.html",
+    content = function(file) {
+      tempReport <- file.path(tempdir(), "Rapport.rmd")
+      file.copy("Rapport.rmd", tempReport, overwrite = TRUE)
+      # A compléter
+      params <- list(n = input$slider)
+    
+      rmarkdown::render(tempReport, output_file = file,
+                        params = params,
+                        envir = new.env(parent = globalenv())
+      )
+    }
+  )
   
-  output$Plot1 <- renderPlot({
-    file <-input$RNA-seq
-  })
-}
+})
 
 shinyApp(ui, server)
