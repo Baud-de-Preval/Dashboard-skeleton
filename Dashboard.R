@@ -60,13 +60,7 @@ ui <- dashboardPage(
       ),
     
     tabItem(tabName = "gathered",
-            fluidRow(
-              box(title = "Variables supplémentaires", status = "success", solidHeader = TRUE,
-                  checkboxInput("supp.var1","Temps"),
-                  checkboxInput("supp.var2","Virus")
-              )
-      ),
-              box(width = '100%', plotOutput("ggraphe"), title = "Données groupées par temps et/ou par maladie", status = "success")
+              box(width = '100%', plotOutput("ggraphe"), title = "Données groupées par variable", status = "success")
             
       ),
     
@@ -127,29 +121,25 @@ server <- shinyServer(function(input, output,session) {
   
   ## Forme de la donnée ? df %>% pivot_longer
   sv <- reactive({ 
-    req(input$supp.var1, input$supp.var2)
+    req(input$file)
+  
     
-  if(input$supp.var1 == "Temps" & input$supp.var2 == "Virus") {
-    output$ggraphe <- renderPlot({
-      ggplot(data =Tot, mapping = aes(x = colnames(tab()[-1]), y = colSums(tab()[-1])), fill = temps, color = virus) 
-        
     })
-    }
-  else if (input$supp.var1 == "Temps") {
+  
     output$ggraphe <- renderPlot({
-      
-      ggplot(data =Tot, mapping = aes(x = colnames(tab()[-1]), y = colSums(tab()[-1])), fill = temps ) 
-        
-    })
-    }
- else if (input$supp.var2 == "Virus") {
-   ggplot(data =Tot, mapping = aes(x = colnames(tab()[-1]), y = colSums(tab()[-1])), fill =virus ) 
-     
-   output$ggraphe <- renderPlot({
-     
-   })
- }
+    sv() %>% 
+      pivot_longer(c(`Dengue24ha`,`Dengue24hb`,`Dengue24hc`,`Dengue6da`,`Dengue6db`,`Dengue6dc`,`MOCKA24ha`,`MOCKA24hb`,`MOCKA24hc`,`MOCKA6da`,`MOCKA6db`,`MOCKA6dc`,`MOCKB24ha`,`MOCKB24hb`,`MOCKB24hc`,`MOCKB6da`,`MOCKB6db`,`MOCKB6dc`,`MOCKC24ha`,`MOCKC24hb`,`MOCKC24hc`,`MOCKC6da`,`MOCKC6db`,`MOCKC6dc`,`RVF24ha`,`RVF24hb`,`RVF24hc`,`RVF6da`,`RVF6db`,`RVF6dc`), names_to = "Samplename", values_to = "count")
+    z <-sv %>% 
+      separate(Samplename, into = c("Samplename","Rep"), sep =-1)
+    w <- z %>% 
+      mutate(Samplename = stringr::str_replace(Samplename, "6d", "6da"))
+    xd <- w %>%
+      separate(Samplename, into = c("Samplename","Time"), sep = -3)
     
+      value <- aggregate(x$count, by=list(Samplename=x$Samplename), FUN=sum)
+      sv() %>%
+      ggplot(value, mapping =  aes(fill=Time, y=value[,2], x=Samplename)) + 
+        geom_bar(position="dodge", stat="identity")
 })
     
   url <- a("ici", href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Dashboard.R")
