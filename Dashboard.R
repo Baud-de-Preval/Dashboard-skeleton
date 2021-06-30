@@ -122,24 +122,26 @@ server <- shinyServer(function(input, output,session) {
   ## Forme de la donnée ? df %>% pivot_longer
   sv <- reactive({ 
     req(input$file)
-  
     
-    })
+      df2 <- read.csv(input$file$datapath,
+                      header = input$header,
+                      sep = input$sep,
+                      quote = input$quote)
+      l <- df2 %>% 
+      pivot_longer(c(`Dengue24ha`,`Dengue24hb`,`Dengue24hc`,`Dengue6da`,`Dengue6db`,`Dengue6dc`,`MOCKA24ha`,`MOCKA24hb`,`MOCKA24hc`,`MOCKA6da`,`MOCKA6db`,`MOCKA6dc`,`MOCKB24ha`,`MOCKB24hb`,`MOCKB24hc`,`MOCKB6da`,`MOCKB6db`,`MOCKB6dc`,`MOCKC24ha`,`MOCKC24hb`,`MOCKC24hc`,`MOCKC6da`,`MOCKC6db`,`MOCKC6dc`,`RVF24ha`,`RVF24hb`,`RVF24hc`,`RVF6da`,`RVF6db`,`RVF6dc`), names_to = "Samplename", values_to = "count")
+      m <- l %>% 
+          separate(Samplename, into = c("Samplename","Rep"), sep =-1)
+      n <- m %>% 
+          mutate(Samplename = stringr::str_replace(Samplename, "6d", "6da"))
+      o <- n %>%
+          separate(Samplename, into = c("Samplename","Time"), sep = -3)
+      return(o)
+ })
   
     output$ggraphe <- renderPlot({
-    sv() %>% 
-      pivot_longer(c(`Dengue24ha`,`Dengue24hb`,`Dengue24hc`,`Dengue6da`,`Dengue6db`,`Dengue6dc`,`MOCKA24ha`,`MOCKA24hb`,`MOCKA24hc`,`MOCKA6da`,`MOCKA6db`,`MOCKA6dc`,`MOCKB24ha`,`MOCKB24hb`,`MOCKB24hc`,`MOCKB6da`,`MOCKB6db`,`MOCKB6dc`,`MOCKC24ha`,`MOCKC24hb`,`MOCKC24hc`,`MOCKC6da`,`MOCKC6db`,`MOCKC6dc`,`RVF24ha`,`RVF24hb`,`RVF24hc`,`RVF6da`,`RVF6db`,`RVF6dc`), names_to = "Samplename", values_to = "count")
-    z <-sv %>% 
-      separate(Samplename, into = c("Samplename","Rep"), sep =-1)
-    w <- z %>% 
-      mutate(Samplename = stringr::str_replace(Samplename, "6d", "6da"))
-    xd <- w %>%
-      separate(Samplename, into = c("Samplename","Time"), sep = -3)
-    
-      value <- aggregate(x$count, by=list(Samplename=x$Samplename), FUN=sum)
-      sv() %>%
-      ggplot(value, mapping =  aes(fill=Time, y=value[,2], x=Samplename)) + 
-        geom_bar(position="dodge", stat="identity")
+      ggplot(sv(), aes(color=Samplename, group = Samplename, y=Gene, x=count)) + 
+      geom_density(adjust=0.1, aes(x = count, y = Samplename), stat = "identity") +
+      geom_bar(position="dodge", stat="identity") 
 })
     
   url <- a("ici", href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Dashboard.R")
