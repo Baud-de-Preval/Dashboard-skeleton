@@ -1,10 +1,8 @@
 ## RNA_seq Raw Data
 library(shiny)
 library(shinydashboard)
-library(ggplot2)
 library(knitr)
-library(magrittr)
-library(dplyr)
+library(tidyverse)
 
 .theme<- theme(
   axis.line = element_line(colour = 'gray', size = .75),
@@ -17,7 +15,8 @@ ui <- dashboardPage(
   dashboardHeader(title = "Visualisation des données brutes", titleWidth = 300),
   dashboardSidebar(sidebarMenu(
     menuItem("Importation des données", tabName = "data", icon = icon("file")),
-    menuItem("Données brutes", tabName = "raw", icon = icon("bar-chart")),
+    menuItem("Données brutes", tabName = "raw", icon = icon("area-chart")),
+    menuItem("Données groupées", tabName = "gathered", icon = icon("bar-chart")),
     menuItem("Code source", tabName = "source", icon = icon("code"))
     # tags$img(class = "Image", src ="https://p4.wallpaperbetter.com/wallpaper/670/178/355/dna-spiral-genetics-twisted-wallpaper-preview.jpg")
   )),
@@ -46,7 +45,7 @@ ui <- dashboardPage(
                      selected = '"'),
    
         radioButtons("disp", "Display",
-                     choices = c(Head = "head"),
+                     choices = c(Head = "head", All = "all"),
                      selected = "head")
         
         ),
@@ -56,17 +55,24 @@ ui <- dashboardPage(
        
      tabItem(tabName = "raw",
       fluidRow(
-        box(plotOutput("graphe",click = "plot_click"), title = "Visualisation des données", status = "success", tableOutput("rawData"))
+        box(width = '100%', plotOutput("graphe"), title = "Visualisation des données", status = "success", tableOutput("rawData"))
           )
       ),
     
+    tabItem(tabName = "gathered",
+              box(width = '100%', plotOutput("ggraphe"), title = "Données groupées par variable", status = "success")
+            
+      ),
+    
     tabItem(tabName = "source",
-      fluidRow(
-        box( status = "success", title = "Récupérer les résultats", width =6, solidHeader = TRUE, downloadButton("rapport","Rapport"), align="center"),
-        box( status = "success", title = "Récupérer le code", width = 6, solidHeader = TRUE, uiOutput("code"), align="center")
+            fluidRow(
+              box( status = "success", title = "Récupérer les résultats", width =6, solidHeader = TRUE, downloadButton("rapport","Rapport"), align="center"),
+              box( status = "success", title = "Récupérer le code", width = 6, solidHeader = TRUE, uiOutput("code"), align="center")
+            )
       )
-            ))
-  ))
+    ))
+)
+  
     
 
 server <- shinyServer(function(input, output,session) {
@@ -78,7 +84,10 @@ server <- shinyServer(function(input, output,session) {
         df <- read.csv(input$file$datapath,
                        header = input$header,
                        sep = input$sep,
-                       quote = input$quote)
+                       quote = input$quote) 
+        df %>%
+          pivot_longer(c(`Dengue24ha`,`Dengue24hb`,`Dengue24hc`,`Dengue6da`,`Dengue6db`,`Dengue6dc`,`MOCKA24ha`,`MOCKA24hb`,`MOCKA24hc`,`MOCKA6da`,`MOCKA6db`,`MOCKA6dc`,`MOCKB24ha`,`MOCKB24hb`,`MOCKB24hc`,`MOCKB6da`,`MOCKB6db`,`MOCKB6dc`,`MOCKC24ha`,`MOCKC24hb`,`MOCKC24hc`,`MOCKC6da`,`MOCKC6db`,`MOCKC6dc`,`RVF24ha`,`RVF24hb`,`RVF24hc`,`RVF6da`,`RVF6db`,`RVF6dc`), names_to = "Samplename", values_to = "count")
+
       },
       error = function(e) {
         # return a safe Error if a parsing error occurs
@@ -100,11 +109,41 @@ server <- shinyServer(function(input, output,session) {
     })
 
   output$graphe <- renderPlot({
-    vars <- names(tab())
-    tab() %>% ggplot(tab(), mapping = aes(y = colSums(tab()[,1]), x =tab()[[2,]])) + geom_bar(position="dodge", stat="identity", fill="steelblue")
-       
+    Tot <- data.frame(colSums(tab()[-1]))
+    tab() %>%
+      ggplot(data =Tot, mapping = aes(x = colnames(tab()[-1]), y = colSums(tab()[-1])), fill = ) +
+      geom_bar(position="dodge", stat="identity", fill="steelblue") +
+      ggtitle("Nombre de gène portés par chaque échantillon") + 
+      xlab("Echantillon") + 
+      ylab("Gènes portés") +
+      theme(axis.text.x = element_text(face="bold", color="#543333",size=9, angle=90))
     })
   
+  ## Forme de la donnée ? df %>% pivot_longer
+  sv <- reactive({ 
+    req(input$file)
+    
+      df2 <- read.csv(input$file$datapath,
+                      header = input$header,
+                      sep = input$sep,
+                      quote = input$quote)
+      l <- df2 %>% 
+      pivot_longer(c(`Dengue24ha`,`Dengue24hb`,`Dengue24hc`,`Dengue6da`,`Dengue6db`,`Dengue6dc`,`MOCKA24ha`,`MOCKA24hb`,`MOCKA24hc`,`MOCKA6da`,`MOCKA6db`,`MOCKA6dc`,`MOCKB24ha`,`MOCKB24hb`,`MOCKB24hc`,`MOCKB6da`,`MOCKB6db`,`MOCKB6dc`,`MOCKC24ha`,`MOCKC24hb`,`MOCKC24hc`,`MOCKC6da`,`MOCKC6db`,`MOCKC6dc`,`RVF24ha`,`RVF24hb`,`RVF24hc`,`RVF6da`,`RVF6db`,`RVF6dc`), names_to = "Samplename", values_to = "count")
+      m <- l %>% 
+          separate(Samplename, into = c("Samplename","Rep"), sep =-1)
+      n <- m %>% 
+          mutate(Samplename = stringr::str_replace(Samplename, "6d", "6da"))
+      o <- n %>%
+          separate(Samplename, into = c("Samplename","Time"), sep = -3)
+      return(o)
+ })
+  
+    output$ggraphe <- renderPlot({
+      ggplot(sv(), aes(color=Samplename, group = Samplename, y=Gene, x=count)) + 
+      geom_density(adjust=0.1, aes(x = count, y = Samplename), stat = "identity") +
+      geom_bar(position="dodge", stat="identity") 
+})
+    
   url <- a("ici", href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Dashboard.R")
   output$code <- renderUI({
     tagList("Le lien vers le code :", url)
