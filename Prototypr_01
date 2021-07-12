@@ -1,0 +1,114 @@
+library(shiny)
+library(shinydashboard)
+library(knitr)
+library(tidyverse)
+library(readxl)
+library(reshape2)
+library(plyr)
+library(janitor)
+
+ui <- dashboardPage(
+  skin = "green", 
+  dashboardHeader(title = "Lumpy skin disease data analysis", titleWidth = 300),
+  dashboardSidebar(sidebarMenu(
+    menuItem("Data uploader", tabName = "data", icon = icon("file")),
+    menuItem("Raw data", tabName = "raw", icon = icon("area-chart")),
+    menuItem("Grouped data", tabName = "gathered", icon = icon("bar-chart")),
+    menuItem("Source code", tabName = "source", icon = icon("code"))
+    # tags$img(class = "Image", src ="https://p4.wallpaperbetter.com/wallpaper/670/178/355/dna-spiral-genetics-twisted-wallpaper-preview.jpg")
+  )),
+  
+  dashboardBody(
+    tabItems(
+      tabItem(tabName = "data",
+              fluidRow(
+                box(status = "success",width = 6, solidHeader = TRUE, fileInput(inputId = "file", label = "Please upload your data", multiple = TRUE, accept = c(".txt","text/csv",
+                                                                                                                                                               "text/comma-separated-values,text/plain",".csv",".ods"))),
+                box(tableOutput("contents"),width = 6, title = "Data overview", status = "success", soliderHeader = TRUE, collapsible = T, collapsed = T),
+                box(checkboxInput("header", "Header", TRUE)),
+                
+                # Input: Select separator ----
+                box(radioButtons("sep", "Separator",
+                                 choices = c(Comma = ",",
+                                             Semicolon = ";",
+                                             Tab = "\t"),
+                                 selected = ","),
+                    
+                    # Input: Select quotes ----
+                    radioButtons("quote", "Quote",
+                                 choices = c(None = "",
+                                             "Double Quote" = '"',
+                                             "Single Quote" = "'"),
+                                 selected = '"'),
+                    
+                    radioButtons("disp", "Display",
+                                 choices = c(Head = "head", All = "all"),
+                                 selected = "head")
+                    
+                )
+                
+                )
+              ),
+      
+      tabItem("raw",
+        fluidRow(
+          box(status = "success",title = "Set the minimum Mascot Peptide Score wanted", solidHeader = TRUE,
+              sliderInput("MPS", "MPS lower threshold :", 0,150,60)),
+          box(tableOutput("Summary"), title = "Summary", status = "success", solidHeader = TRUE)
+        )
+          
+        ),
+      
+      tabItem("grouped data",
+              fluidRow(
+                box(plotoutput = "datahard", status = "success", title = "Overview on raw data", solidHeader = TRUE),
+                box(radioButtons("display_1","Samples display",
+                                 choices = c(Q27824 = "Q27824",Q27825 = "Q27825",Q27826 = "Q27826",Q27827 = "Q27827",Q27828 = "Q27828",Q27829 = "Q27829",Q27830 = "Q27830",Q27831 = "Q27831",Q27832 = "Q27832", All ="all"), selected = "all")),
+                    radioButtons("display_2", "Organism display",
+                                 choices = c(Lumpy_skin_disease = "Lumpy skin disease", Bos.taurus = "Bos taurus" )))
+              )
+              )
+      
+        
+      ))
+    
+  
+
+server <- shinyServer(function(input, output,session) {
+  tab <- reactive({ 
+    req(input$file)
+    
+    tryCatch(
+      {
+        df <- read.csv(input$file$datapath,
+                       header = input$header,
+                       sep = input$sep,
+                       quote = input$quote) 
+      },
+      error = function(e) {
+        # return a safe Error if a parsing error occurs
+        stop(safeError(e))
+      }
+    )
+    
+    if(input$disp == "head") {
+      return(head(df))
+    }
+    else {
+      return(df)
+    }
+    
+    output$contents <- renderTable({
+      rep(head(tab()))
+    })
+ 
+    output$Summary <- renderTable({
+      tab() <- group_by(tab()$Accession) %>% filter(tab()$`Mascot Peptide Score` >= input$MPS)
+      summary(tab())
+      tabyl(tab(), Accession, Organism, Sample)
+    })
+  }) 
+    
+})
+
+shinyApp(ui, server)
