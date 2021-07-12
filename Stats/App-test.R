@@ -4,6 +4,7 @@ library(readxl)
 library(tidyverse)
 library(reshape2)
 library(plyr)
+library(janitor)
 
 pep1 <- read_excel("Téléchargements/Li2D_MS21-001_Table S1_List of PSMs.xlsx")
 pep <- pep1[,-12]
@@ -30,8 +31,8 @@ df_order <- df %>% group_by(Accession) %>% top_n(1, 'Mascot Peptide Score')
 df_uni <- distinct(summarise(df_order)) # --> Nb correspondant au tableau des protéines
 
 df_untidy <- df %>% pivot_wider(names_from = Query, values_from = `Mascot Peptide Score`)
-df_untidy <- mutate_at(df_untidy, colnames(df_untidy[,22:30]), ~replace(., is.na(.), 0))
-df_sum <- data.frame(colSums(df_untidy[,22:30]))
+df_untidy <- mutate_at(df_untidy, colnames(df_untidy[,21:29]), ~replace(., is.na(.), 0))
+df_sum <- data.frame(colSums(df_untidy[,21:29]))
 
 # Représenter les données en fonction des échantillons
 
@@ -50,7 +51,7 @@ x9 <- length(table(factor(df2$Q27832)))
 
 N <- c(x1,x2,x3,x4,x5,x6,x7,x8,x9) # Nombre de protéine détectée dans tous les échantillons
 Sample <- row.names(df_sum)
-V <- data.frame(N, colSums(df_untidy[,22:30]))
+V <- data.frame(N, colSums(df_untidy[,21:29]))
 
 V %>% ggplot(mapping = aes(y= N, x= Sample, color = V[,2])) +
   geom_bar(fill = "steelblue", stat = "identity") +
@@ -100,17 +101,36 @@ p = ggplot(data = data.frame(NB), mapping = aes(y= unlist(NB[,2]), x= rep(rownam
 p
 
 ###
-# Nombre de protéines par échantillons et par type
+# Nombre de protéines par échantillons et par organisme
 
 df5 <- df3 %>% mutate("Organism")
 
-LSD <- sapply(df5, grep, pattern = "Lumpy")
-Bos2 <- matrix(sapply(df5, grep, pattern = "ovin"))
-Bos1 <- matrix(sapply(df5, grep, pattern = "taurus"))
-Bos <- join(Bos1, Bos2)
+Organism <- c(rep(NA, 88319))
+df5 <- data.frame(df5, Organism)
+df5$Organism <- ifelse(grepl("Lumpy", df5$description), "Lumpy skin disease", "Bos taurus")
+df5 <- df5[,6:7]
+df5 %>% select(Accession) %>% unique
+# Ici tout ce qui n'a pas été identifié comme LSD est donné comme appartenant à Bos taurus
+W <- data.frame(t(tabyl(df5, Organism, Query)))
+W <- W[-1,]
+colnames(W) <- c("Bos taurus", "LSD")
+
+d <- rep(Sample,2)  # création du dataframe
+c <- rep(c("Bos taurus", "LSD"),9)
+b <- c(as.numeric(as.character(W$`Bos taurus`)),as.numeric(as.character(W$LSD)))
+a <- data_frame(d,c,b)
+
+ggplot(a, aes(fill=c, y=b, x=d)) + 
+  geom_bar(position="dodge", stat="identity") +
+  ggtitle("Protein distribution between samples and organisms") +
+  xlab("Sample") +
+  ylab("Number of protein") +
+  labs(fill="Organism") +
+  theme_bw()
+
 # Comparer les échantillons par ACM, ACP ?
 
 
-nrow(distinct(dplyr::filter(df_untidy2, grepl('Lumpy skin disease virus', Accession))) )
+nrow(distinct(dplyr::filter(df5, grepl('Lumpy skin disease', Accession))) )
 nrow(is.na(df_untidy2$Q27824))
 
