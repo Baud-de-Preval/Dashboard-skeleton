@@ -127,10 +127,3 @@ ggplot(a, aes(fill=c, y=b, x=d)) +
   ylab("Number of protein") +
   labs(fill="Organism") +
   theme_bw()
-
-# Comparer les échantillons par ACM, ACP ?
-
-
-nrow(distinct(dplyr::filter(df5, grepl('Lumpy skin disease', Accession))) )
-nrow(is.na(df_untidy2$Q27824))
-
