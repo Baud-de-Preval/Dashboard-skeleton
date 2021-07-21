@@ -24,11 +24,12 @@ read_and_parse = function(psmfile){
 
 
 ui <- dashboardPage(skin = "green", 
-  dashboardHeader(title = "Proteomic app"),
+  dashboardHeader(title = "Proteomic app"), dbHeader$children[[2]]$children <-  tags$a(href='https://umr-astre.cirad.fr/l-unite',
+                                                                                       tags$img(src='https://umr-astre.cirad.fr/var/umr_astre/storage/images/umr-astre/l-unite/37434-38-fre-FR/l-unite.png',height='60',width='200')),
   dashboardSidebar(sidebarMenu(
     menuItem("Data uploader", tabName = "data_upload", icon = icon("file")),
     menuItem("Raw data", tabName = "raw_data", icon = icon("area-chart")),
-    menuItem("Grouped data", tabName = "grouped_data", icon = icon("bar-chart"), sliderInput("MPS", "MPS lower threshold :", 0,150,20),
+    menuItem("Grouped data", tabName = "grouped_data", icon = icon("bar-chart"), sliderInput("MPS", "MPS lower threshold :", 0,250,20),
              menuSubItem("By sample", tabName = "by_sample", icon = icon("list-alt")),
              menuSubItem("Khi test", tabName = "khi_2", icon = icon("a fa-pencil"))
     ),
@@ -133,16 +134,12 @@ server <- function(input, output, session) {
     
     output$Khi = renderText({
       dataparsed() %>% filter(`Mascot Peptide Score` >= input$MPS)
-      Prot <- tabyl(dataparsed(), sample, Accession) %>% subset(sample == input$box1 & sample == input$box2)
-      chisq.test((Prot), tabyl_results = TRUE)
+      Prot() %>% tabyl(dataparsed(), sample, Accession)
+      Prot() %>% select(Accession, input$box1, input$box2)
+      chisq.test(x = Prot, y = NULL, tabyl_results = TRUE)
     })
     
-    output$heat = renderPlot({
-      Heat <- dataparsed() %>% tabyl(sample, Accession)
-      Heat <- melt(round(cor(Heat),2))
-      ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
-        geom_tile()
-    })
+
     
     url <- a("here", href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Prototypr_01")
     output$code <- renderUI({
