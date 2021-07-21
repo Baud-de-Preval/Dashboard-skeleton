@@ -6,12 +6,9 @@ library(readxl)
 library(reshape2)
 library(plyr)
 library(janitor)
-
-
+library(shinythemes)
 
 # Initialisation
-
-PbS = c()
 
 read_and_parse = function(psmfile){
   data = readxl::read_xlsx(psmfile,skip =10)
@@ -19,19 +16,21 @@ read_and_parse = function(psmfile){
   data = data %>% separate(col = "Origine_Query",sep = "@",into = c("sample","query"))
   data = data %>% select(sample,`Mascot Peptide Score`,Accession, description)
   samplelist = data %>% select(sample) %>% unique %>% as.vector()
-  
+
   return(data)
 }
 
 
-ui <- dashboardPage(
-  skin = "green", 
+
+
+ui <- dashboardPage(skin = "green", 
   dashboardHeader(title = "Proteomic app"),
   dashboardSidebar(sidebarMenu(
     menuItem("Data uploader", tabName = "data_upload", icon = icon("file")),
     menuItem("Raw data", tabName = "raw_data", icon = icon("area-chart")),
     menuItem("Grouped data", tabName = "grouped_data", icon = icon("bar-chart"), sliderInput("MPS", "MPS lower threshold :", 0,150,20),
-             menuSubItem("By sample", tabName = "by_sample", icon = icon("list-alt"))
+             menuSubItem("By sample", tabName = "by_sample", icon = icon("list-alt")),
+             menuSubItem("Khi test", tabName = "khi_2", icon = icon("a fa-pencil"))
     ),
     menuItem("Source code", tabName = "source_code", icon = icon("code"))
     # tags$img(class = "Image", src ="https://p4.wallpaperbetter.com/wallpaper/670/178/355/dna-spiral-genetics-twisted-wallpaper-preview.jpg")
@@ -41,25 +40,34 @@ ui <- dashboardPage(
     tabItems(
       tabItem(tabName = "data_upload",
         fluidRow(
-          box(status = "success", fileInput(inputId = "filedata",
+          box(status = "success",width = '100%', fileInput(inputId = "filedata",
                                             label = "Upload peptide file. Choose xlsx file",
                                             accept = c(".xlsx")),
               tags$hr(),
               actionButton("parse", "Parse dataset for analysis"), align = "center"
           ),
-          box(status = "success", dataTableOutput("contents"), title = "Data overview", solidHeader = T)
+          box(status = "success", width = '100%', dataTableOutput("contents"), title = "Data overview", solidHeader = T)
           
               )
             ),
     tabItem(tabName = "raw_data",
             fluidRow(
-              box(status = "success", title = "Summary of the data", solidHeader = T, plotOutput("summary"))
+              box(status = "success", title = "Summary of the data", solidHeader = T, tableOutput("summary")),
+              box(status = "success", title = "Sample figures", tableOutput("figures"))
             )
           ),
     tabItem(tabName = "by_sample",
             fluidRow(
               box(status = "success", title = "Overview by sample", solidHeader = T, plotOutput("plot")),
               box(status = "success", title = "Sample displayed", uiOutput("moreControls"))
+            )
+        ),
+    tabItem(tabName = "khi_2",
+            fluidRow(
+              box(status = "success", title = "Khi-2 test overview", solidHeader = T, plotOutput("heat")),
+              box(status = "success", title = "Khi-2 test between two samples", 
+                  selectInput(inputId = "box1", "Choose a sample", choices = NULL),
+                  selectInput(inputId = "box2", "Choose another", choices = NULL), textOutput("Khi"))
             )
         ),
     tabItem(tabName = "source_code",
@@ -78,7 +86,8 @@ server <- function(input, output, session) {
   dataparsed= reactiveVal(data.frame())
   samplelist = reactiveVal(c())
   sampleshown = reactiveVal("")
-  As = reactiveValues()
+  Prot = reactiveVal(data.frame())
+  Heat = reactiveVal(data.frame())
   
 
   observeEvent(input$parse, {
@@ -86,19 +95,18 @@ server <- function(input, output, session) {
     samplelist(dataparsed()$sample %>% unique)
     sampleshown(samplelist()[1])
     output$contents = renderDataTable(dataparsed())
-    As <-tabyl(dataparsed(), Accession, sample)
    })  
   
-  output$summary = renderPlot(  
-    As %>% ggplot(aes(x = sample) +
-      geom_bar(position="dodge", stat="identity") +
-      theme(axis.text.x = element_text(face="bold", color="black", angle = 32)) +
-      ggtitle("Protein distribution between samples") +
-      xlab("Sample") +
-      ylab("Number of protein") +
-      theme_bw()
-  ))
+  output$summary = renderTable(  
+    summary(dataparsed()[,2])
 
+  )
+  
+  output$figures = renderTable(
+    dataparsed() %>% tabyl(sample)
+  )
+  
+  
   output$plot = renderPlot(
      ggplot(dataparsed() %>% filter(sample == input$sampleID & `Mascot Peptide Score` >= input$MPS)) + 
        geom_histogram(aes(x=`Mascot Peptide Score`, fill = input$sampleID)) +
@@ -110,6 +118,31 @@ server <- function(input, output, session) {
         radioButtons("sampleID","Choose sample:",samplelist())
       )
   })
+    
+    observe({
+      updateSelectInput(session, "box1",
+                        label = "Choose a sample",
+                        choices = samplelist(),
+                        selected = NULL)
+      
+      updateSelectInput(session, "box2",
+                        label = "Choose another sample",
+                        choices = samplelist(),
+                        selected = NULL)
+    })
+    
+    output$Khi = renderText({
+      dataparsed() %>% filter(`Mascot Peptide Score` >= input$MPS)
+      Prot <- tabyl(dataparsed(), sample, Accession) %>% subset(sample == input$box1 & sample == input$box2)
+      chisq.test((Prot), tabyl_results = TRUE)
+    })
+    
+    output$heat = renderPlot({
+      Heat <- dataparsed() %>% tabyl(sample, Accession)
+      Heat <- melt(round(cor(Heat),2))
+      ggplot(data = melted_cormat, aes(x=Var1, y=Var2, fill=value)) + 
+        geom_tile()
+    })
     
     url <- a("here", href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Prototypr_01")
     output$code <- renderUI({
