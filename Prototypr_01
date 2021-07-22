@@ -16,16 +16,17 @@ read_and_parse = function(psmfile){
   data = data %>% separate(col = "Origine_Query",sep = "@",into = c("sample","query"))
   data = data %>% select(sample,`Mascot Peptide Score`,Accession, description)
   samplelist = data %>% select(sample) %>% unique %>% as.vector()
+  N = data %>% select(Accession) %>% unique 
 
   return(data)
 }
 
-
-
+dbHeader <- dashboardHeader()
+dbHeader$children[[2]]$children <-  tags$a(href='https://umr-astre.cirad.fr/l-unite',
+                                           tags$img(src='https://umr-astre.cirad.fr/var/umr_astre/storage/images/umr-astre/l-unite/37434-38-fre-FR/l-unite.png',height='60',width='200'))
 
 ui <- dashboardPage(skin = "green", 
-  dashboardHeader(title = "Proteomic app"), dbHeader$children[[2]]$children <-  tags$a(href='https://umr-astre.cirad.fr/l-unite',
-                                                                                       tags$img(src='https://umr-astre.cirad.fr/var/umr_astre/storage/images/umr-astre/l-unite/37434-38-fre-FR/l-unite.png',height='60',width='200')),
+  dashboardHeader(title = "Proteomic app"), 
   dashboardSidebar(sidebarMenu(
     menuItem("Data uploader", tabName = "data_upload", icon = icon("file")),
     menuItem("Raw data", tabName = "raw_data", icon = icon("area-chart")),
@@ -65,7 +66,7 @@ ui <- dashboardPage(skin = "green",
         ),
     tabItem(tabName = "khi_2",
             fluidRow(
-              box(status = "success", title = "Khi-2 test overview", solidHeader = T, plotOutput("heat")),
+              box(status = "success", title = "Khi-2 test overview", solidHeader = T, dataTableOutput("heat")),
               box(status = "success", title = "Khi-2 test between two samples", 
                   selectInput(inputId = "box1", "Choose a sample", choices = NULL),
                   selectInput(inputId = "box2", "Choose another", choices = NULL), textOutput("Khi"))
@@ -87,13 +88,17 @@ server <- function(input, output, session) {
   dataparsed= reactiveVal(data.frame())
   samplelist = reactiveVal(c())
   sampleshown = reactiveVal("")
-  Prot = reactiveVal(data.frame())
-  Heat = reactiveVal(data.frame())
+  Prot = reactiveVal(matrix())
+  N = reactiveVal(c())
+  A = reactiveVal(matrix())
+  index = reactiveVal(c())
+  
   
 
   observeEvent(input$parse, {
     dataparsed(read_and_parse(req(input$filedata$datapath)))
     samplelist(dataparsed()$sample %>% unique)
+    Prot(tabyl(dataparsed(), Accession, sample))
     sampleshown(samplelist()[1])
     output$contents = renderDataTable(dataparsed())
    })  
@@ -132,13 +137,13 @@ server <- function(input, output, session) {
                         selected = NULL)
     })
     
-    output$Khi = renderText({
-      dataparsed() %>% filter(`Mascot Peptide Score` >= input$MPS)
-      Prot() %>% tabyl(dataparsed(), sample, Accession)
-      Prot() %>% select(Accession, input$box1, input$box2)
-      chisq.test(x = Prot, y = NULL, tabyl_results = TRUE)
+    output$Khi = renderUI({
+      dataparsed() %>% filter(`Mascot Peptide Score` >= input$MPS) 
+      index = c(grep(pattern = input$box1, samplelist()), grep(pattern = input$box2, samplelist()))
+      fisher.test(x = Prot()[index[1]], y =Prot()[index[2]], simulate.p.value = F)
     })
     
+
 
     
     url <- a("here", href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Prototypr_01")
