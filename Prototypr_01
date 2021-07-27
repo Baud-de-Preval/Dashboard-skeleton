@@ -7,6 +7,10 @@ library(reshape2)
 library(plyr)
 library(janitor)
 library(shinythemes)
+library(FactoMineR)
+library(shinyWidgets)
+library(bootstrap)
+library(plotly)
 
 # Initialisation
 
@@ -14,77 +18,107 @@ read_and_parse = function(psmfile){
   data = readxl::read_xlsx(psmfile,skip =10)
   data = data %>% unite(col="description",22:24,na.rm=T,sep= " [",remove = T) 
   data = data %>% separate(col = "Origine_Query",sep = "@",into = c("sample","query"))
-  data = data %>% select(sample,`Mascot Peptide Score`,Accession, description)
+  data = data %>% select(sample,`Mascot Peptide Score`, Accession, description)
   samplelist = data %>% select(sample) %>% unique %>% as.vector()
   N = data %>% select(Accession) %>% unique 
-
+  
   return(data)
 }
 
-dbHeader <- dashboardHeader()
-dbHeader$children[[2]]$children <-  tags$a(href='https://umr-astre.cirad.fr/l-unite',
-                                           tags$img(src='https://umr-astre.cirad.fr/var/umr_astre/storage/images/umr-astre/l-unite/37434-38-fre-FR/l-unite.png',height='60',width='200'))
+khi_test = function(data, sample1, sample2, threshold){
+  data$sample %>% unique
+  data %>%
+    filter(sample %in% c(sample1,sample2) & `Mascot Peptide Score` >= threshold) -> datakhi
+  table(datakhi$Accession,datakhi$sample) %>% as.matrix -> test
+  return(stats::chisq.test(test, simulate.p.value = T))
+}
 
-ui <- dashboardPage(skin = "green", 
-  dashboardHeader(title = "Proteomic app"), 
-  dashboardSidebar(sidebarMenu(
-    menuItem("Data uploader", tabName = "data_upload", icon = icon("file")),
-    menuItem("Raw data", tabName = "raw_data", icon = icon("area-chart")),
-    menuItem("Grouped data", tabName = "grouped_data", icon = icon("bar-chart"), sliderInput("MPS", "MPS lower threshold :", 0,250,20),
-             menuSubItem("By sample", tabName = "by_sample", icon = icon("list-alt")),
-             menuSubItem("Khi test", tabName = "khi_2", icon = icon("a fa-pencil"))
-    ),
-    menuItem("Source code", tabName = "source_code", icon = icon("code"))
-    # tags$img(class = "Image", src ="https://p4.wallpaperbetter.com/wallpaper/670/178/355/dna-spiral-genetics-twisted-wallpaper-preview.jpg")
-  )),
-  
-  dashboardBody(
-    tabItems(
-      tabItem(tabName = "data_upload",
-        fluidRow(
-          box(status = "success",width = '100%', fileInput(inputId = "filedata",
-                                            label = "Upload peptide file. Choose xlsx file",
-                                            accept = c(".xlsx")),
-              tags$hr(),
-              actionButton("parse", "Parse dataset for analysis"), align = "center"
-          ),
-          box(status = "success", width = '100%', dataTableOutput("contents"), title = "Data overview", solidHeader = T)
-          
-              )
-            ),
-    tabItem(tabName = "raw_data",
-            fluidRow(
-              box(status = "success", title = "Summary of the data", solidHeader = T, tableOutput("summary")),
-              box(status = "success", title = "Sample figures", tableOutput("figures"))
-            )
-          ),
-    tabItem(tabName = "by_sample",
-            fluidRow(
-              box(status = "success", title = "Overview by sample", solidHeader = T, plotOutput("plot")),
-              box(status = "success", title = "Sample displayed", uiOutput("moreControls"))
-            )
-        ),
-    tabItem(tabName = "khi_2",
-            fluidRow(
-              box(status = "success", title = "Khi-2 test overview", solidHeader = T, dataTableOutput("heat")),
-              box(status = "success", title = "Khi-2 test between two samples", 
-                  selectInput(inputId = "box1", "Choose a sample", choices = NULL),
-                  selectInput(inputId = "box2", "Choose another", choices = NULL), textOutput("Khi"))
-            )
-        ),
-    tabItem(tabName = "source_code",
-            fluidRow(
-              box(status = "success", title = "Get a report", solidHeader = T, downloadButton("report","Report"), align="center"),
-              box(status = "success", title = "Get the code", solidHeader = T, uiOutput("code"), align="center")
-           )
-        )
-    )
-  )
+Heat_map = function(data, name){
+  data =table(data$Accession,data$sample)
+  corr = round(cor(data),2)
+  melt_corr = melt(corr)
+  row.names(melt_coor) = colnames(melt_corr)= name
+  fisher.test(melt_corr)
+  return(fisher.multcomp(melt_corr))
+}
+
+
+ui <- dashboardPage(skin ="green", 
+                    dashboardHeader(title = "Proteomic app",
+                                    tags$li(class="dropdown", tags$a(href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Prototypr_01", icon("github"), "Source Code", target="_blank")),
+                                    tags$li(class = "dropdown", tags$a(href = 'https://umr-astre.cirad.fr/', icon("home")))),
+                    
+                    dashboardSidebar(sidebarMenu( 
+                      menuItem("Data uploader", tabName = "data_upload", icon = icon("file")),
+                      menuItem("Normality test", tabName = "norm", icon = icon("binoculars")),
+                      menuItem("Raw data", tabName = "raw_data", icon = icon("area-chart")),
+                      menuItem("Grouped data", tabName = "grouped_data", icon = icon("bar-chart"), chooseSliderSkin("Modern"),noUiSliderInput("MPS", "MPS lower threshold :", 0,250,20),
+                               menuSubItem("By sample", tabName = "by_sample", icon = icon("list-alt")),
+                               menuSubItem("Khi test", tabName = "khi_2", icon = icon("a fa-pencil"))
+                      ),
+                      menuItem("Source code", tabName = "source_code", icon = icon("code"))
+                      # tags$img(class = "Image", src ="https://p4.wallpaperbetter.com/wallpaper/670/178/355/dna-spiral-genetics-twisted-wallpaper-preview.jpg")
+                    )),
+                    
+                    dashboardBody(
+                      tags$head(
+                        tags$link(rel = "stylesheet", type = "text/css", href = "boostrap.min.css")
+                      ),
+                      tabItems(
+                        tabItem(tabName = "data_upload",
+                                fluidRow(h2(" The upload file will be used to perform", strong("the analysis")),
+                                  box(status = "success",width = '100%', fileInput(inputId = "filedata",
+                                                                                   label = "Upload peptide file. Choose xlsx file",
+                                                                                   accept = c(".xlsx")),
+                                      tags$style(".progress-bar {background-color: #5e437;}"),
+                                      
+                                      tags$hr(),
+                                      actionBttn("parse", "Parse dataset for analysis"), align = "center"
+                                  ),
+                                  box(status = "success", width = '100%', dataTableOutput("contents"), title = "Data overview", solidHeader = T)
+                                  
+                                )
+                        ),
+                        tabItem(tabName = "norm",
+                                fluidRow(
+                                  box( status = "success", title = "Is the distibution normal ?", solidHeader = T, plotOutput("normal")),
+                                  box( status = "success",title = "Kolmogorov-Smirnov test of normality",tags$hr(), uiOutput("Shapiro"))
+                                  )
+                                ),
+                        tabItem(tabName = "raw_data",
+                                fluidRow(
+                                  box(status = "success", title = "Summary of the data", solidHeader = T, tableOutput("summary")),
+                                  box(status = "success", title = "Sample figures", tableOutput("figures"))
+                                )
+                        ),
+                        tabItem(tabName = "by_sample",
+                                fluidRow(
+                                  box(status = "success", title = "Overview by sample", solidHeader = T, plotlyOutput("plot")),
+                                  box(status = "success", title = "Sample displayed", uiOutput("moreControls"))
+                                )
+                        ),
+                        tabItem(tabName = "khi_2",
+                                fluidRow(
+                                  box(status = "success", title = "Khi-2 test overview", solidHeader = T, dataTableOutput("heat")),
+                                  box(status = "success", title = "Khi-2 test between two samples", 
+                                      pickerInput(inputId = "box1", "Choose a sample", choices = NULL),
+                                      pickerInput(inputId = "box2", "Choose another", choices = NULL), tags$hr(),
+                                      verbatimTextOutput("Khi"), textOutput("khibis"))
+                                )
+                        ),
+                        tabItem(tabName = "source_code",
+                                fluidRow(
+                                  box(status = "success", title = "Get a report", solidHeader = T, downloadBttn("report","Report"), align="center"),
+                                  box(status = "success", title = "Get the code", solidHeader = T, uiOutput("code"), align="center")
+                                )
+                        )
+                      )
+                    )
 )
-  
+
 options(shiny.maxRequestSize=30*1024^2)
 server <- function(input, output, session) {
-
+  
   dataparsed= reactiveVal(data.frame())
   samplelist = reactiveVal(c())
   sampleshown = reactiveVal("")
@@ -94,62 +128,73 @@ server <- function(input, output, session) {
   index = reactiveVal(c())
   
   
-
+  
   observeEvent(input$parse, {
     dataparsed(read_and_parse(req(input$filedata$datapath)))
     samplelist(dataparsed()$sample %>% unique)
     Prot(tabyl(dataparsed(), Accession, sample))
     sampleshown(samplelist()[1])
+    animateOptions(enter = "fadeInDown",duration = 3)
     output$contents = renderDataTable(dataparsed())
-   })  
+  })  
   
   output$summary = renderTable(  
     summary(dataparsed()[,2])
-
+    
   )
   
   output$figures = renderTable(
     dataparsed() %>% tabyl(sample)
   )
   
+  output$normal = renderPlot(
+    dataparsed() %>% ggplot(aes(x = `Mascot Peptide Score`)) +
+      geom_density(color="red", alpha=0.8)
+  )
   
-  output$plot = renderPlot(
-     ggplot(dataparsed() %>% filter(sample == input$sampleID & `Mascot Peptide Score` >= input$MPS)) + 
-       geom_histogram(aes(x=`Mascot Peptide Score`, fill = input$sampleID)) +
-       guides(fill=FALSE) 
+  output$Shapiro = renderPrint(
+    dataparsed()$`Mascot Peptide Score` %>% ks.test("pnorm")
+  )
+  
+  output$plot = renderPlotly(
+    ggplotly(dataparsed() %>% filter(sample == input$sampleID & `Mascot Peptide Score` >= input$MPS)) + 
+      geom_histogram(aes(x=`Mascot Peptide Score`, fill = input$sampleID)) +
+      guides(fill=FALSE)
+  )
+  
+  output$moreControls = renderUI({
+    tagList(
+      awesomeRadio("sampleID","Choose sample:",samplelist())
     )
-    
-    output$moreControls = renderUI({
-      tagList(
-        radioButtons("sampleID","Choose sample:",samplelist())
-      )
   })
+  
+  observe({
+    updatePickerInput(session, "box1",
+                      label = "Choose a sample",
+                      choices = samplelist(),
+                      selected = NULL)
     
-    observe({
-      updateSelectInput(session, "box1",
-                        label = "Choose a sample",
-                        choices = samplelist(),
-                        selected = NULL)
-      
-      updateSelectInput(session, "box2",
-                        label = "Choose another sample",
-                        choices = samplelist(),
-                        selected = NULL)
-    })
-    
-    output$Khi = renderUI({
-      dataparsed() %>% filter(`Mascot Peptide Score` >= input$MPS) 
-      index = c(grep(pattern = input$box1, samplelist()), grep(pattern = input$box2, samplelist()))
-      fisher.test(x = Prot()[index[1]], y =Prot()[index[2]], simulate.p.value = F)
-    })
-    
+    updatePickerInput(session, "box2",
+                      label = "Choose another sample",
+                      choices = samplelist(),
+                      selected = NULL)
+  })
+  
+  output$Khi = renderPrint({
+   khi_test(dataparsed(), input$box1, input$box2, input$MPS)
+  })
+  
 
-
-    
-    url <- a("here", href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Prototypr_01")
-    output$code <- renderUI({
-      tagList("To get the code please click :", url)
+  
+  output$heat = renderPrint({
+    Heat_map(dataparsed(), samplelist())
     })
+  
+
+  url <- a("here", href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Prototypr_01")
+  output$code <- renderUI({
+    tagList("To get the code please click :", url)
+  })
 }
 
 shinyApp(ui, server)
