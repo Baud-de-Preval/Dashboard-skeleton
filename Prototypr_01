@@ -1,200 +1,351 @@
+### Packages
+
 library(shiny)
 library(shinydashboard)
 library(knitr)
 library(tidyverse)
 library(readxl)
 library(reshape2)
-library(plyr)
+library(ggpubr)
 library(janitor)
-library(shinythemes)
 library(FactoMineR)
+library(factoextra)
 library(shinyWidgets)
-library(bootstrap)
 library(plotly)
+library(vegan)
+library(UpSetR)
+require(ggrepel)
+library(grid)
+library(heatmaply)
+library(d3heatmap)
+library(viridis)
+library(hrbrthemes)
+library(MASS)
 
-# Initialisation
+finaldata = parse_protein_file("C:/Users/Baudouin/OneDrive/Bureau/Cours/Stage/Stage Cirad/Shiny App/Li2D_MS21-001_Table S2_List of Proteins.xlsx")
 
-read_and_parse = function(psmfile){
-  data = readxl::read_xlsx(psmfile,skip =10)
-  data = data %>% unite(col="description",22:24,na.rm=T,sep= " [",remove = T) 
-  data = data %>% separate(col = "Origine_Query",sep = "@",into = c("sample","query"))
-  data = data %>% select(sample,`Mascot Peptide Score`, Accession, description)
-  samplelist = data %>% select(sample) %>% unique %>% as.vector()
-  N = data %>% select(Accession) %>% unique 
-  
-  return(data)
+#####################   Functions   ########################
+
+### Tidy the input file   ###
+
+parse_protein_file = function(filepath){
+  # First extract samples name from line 18 to 19
+  samples = readxl::read_xlsx(filepath,
+                              skip=17,n_max=1,col_names = F)
+  # get number of cells 
+  length = dim(samples)[[2]]
+  # extract columns with sample ID (start at 11, then 3 cells apart)
+  samples = samples %>%  dplyr::select(seq(11,length,3))
+  # transform line as column ( t == transpose)
+  samples = t(samples)[,1]
+  # remove useless line names
+  names(samples) = NULL
+  ##### Now for the real data: Start at line 19:  
+  data = readxl::read_xlsx(filepath,
+                           skip=19,col_names = T)
+  ##### isolate the first 15 columns (fix, generic data on proteins)
+  global_data = data %>% dplyr::select(1:15)
+  # Replace ambiguous column name "sample" with "BestSpecificSample
+  colnames(global_data)[7]="BestSpecificSample"
+  # initialize empty data frame
+  finaldata = data.frame()
+  # Looping from 1 to number of samples
+  for(i in 1:length(samples)){
+    # positions of the current sample info in data (three columns: SC, LSAT, %LSAT)
+    first = 16+(i-1)*3
+    last = 16+i*3-1
+    data %>% dplyr::select(first:last) -> sample_data
+    colnames(sample_data)= c("SC","NSAF","%NSAF")
+    # Copy the generic data on protein -> appear for each sample
+    tmp_global = global_data
+    # Fill the sample column with current sample name 
+    tmp_global$sample = samples[i]
+    # bind columns of global data with data for samples
+    tmp = cbind(tmp_global,sample_data)
+    #bind rows from this sample total data with the previous ones
+    finaldata = rbind(finaldata,tmp)
+  }
+  return(finaldata)
 }
 
-khi_test = function(data, sample1, sample2, threshold){
-  data$sample %>% unique
+## Make an UpsetR ##
+
+make_upset = function(data, listof_sample, species){
+  data %>% 
+    filter(`#specific peptides`>1) %>% 
+    filter(grepl(species,Organism)) %>% 
+    dplyr::select(`Protein accession`,sample,SC) %>% 
+    mutate(SC = as.integer(ifelse(SC>1,1,0))) %>%
+    pivot_wider(id_cols = `Protein accession`,names_from=sample,values_from=SC)  %>%
+    as.data.frame -> updata 
+  updata[is.na(updata)] <- 0
+  upset(updata, nsets = length(listof_sample), order.by = "freq",number.angles = 30, point.size = 4, line.size = 1.5, 
+        mainbar.y.label = "Protein Intersections", sets.x.label = "Protein per sample", 
+        text.scale = c(2, 2, 1, 1, 1.2, 2), main.bar.color = "steelblue")
+}
+
+## Make a heatmap ##
+
+make_heatmap = function(data, listof_sample, species){ 
   data %>%
-    filter(sample %in% c(sample1,sample2) & `Mascot Peptide Score` >= threshold) -> datakhi
-  table(datakhi$Accession,datakhi$sample) %>% as.matrix -> test
-  return(stats::chisq.test(test, simulate.p.value = T))
+    filter(`#specific peptides` > 2) %>%
+    pivot_wider(id_cols = c(`Protein accession`,Organism),names_from=sample,values_from=NSAF) -> widedata
+  rownames = widedata$`Protein accession`
+  organism = widedata$Organism
+  organism %>% unique
+  widedata %>% dplyr::select(-`Protein accession`, -Organism)  %>% as.matrix -> datamatrix
+  datamatrix[organism == species,] 
+  rownames(datamatrix) = rownames
+  p <- heatmaply(t(datamatrix[organism ==species,]), 
+                 dendrogram = T,
+                 xlab = "", ylab = "", 
+                 main = "",
+                 scale = "column",
+                 margins = c(0,50,NA,0),
+                 grid_color = "white",
+                 grid_width = 0.0001,
+                 titleX = FALSE,
+                 hide_colorbar = F,
+                 na.value = "grey50",
+                 colors = cool_warm,
+                 branches_lwd = 0.6,
+                 label_names = c("Sample", "Accession", "NSAF"),
+                 point_size_name = "NSAF",
+                 fontsize_row = 5, fontsize_col = 5,
+                 labCol = colnames(t(datamatrix[organism==species,])),
+                 labRow = rownames(t(datamatrix[organism==species,])),
+                 heatmap_layers = theme(axis.line=element_blank())
+  )
+  p
 }
 
-Heat_map = function(data, name){
-  data =table(data$Accession,data$sample)
-  corr = round(cor(data),2)
-  melt_corr = melt(corr)
-  row.names(melt_coor) = colnames(melt_corr)= name
-  fisher.test(melt_corr)
-  return(fisher.multcomp(melt_corr))
+## Make a NMDS  ##
+
+make_nMDS = function(data, species, score){
+  data %>% 
+    filter(`#specific peptides`>2) %>% 
+    filter(grepl(species,Organism)) %>% 
+    dplyr::select(`Protein accession`,sample,SC) %>% 
+    pivot_wider(id_cols = `Protein accession`,names_from=sample,values_from=SC) %>% 
+    mutate(SCsums = rowSums(across(where(is.numeric)))) %>% filter(SCsums > score) %>%
+    dplyr::select(-`Protein accession`,-SCsums) -> data_mds
+  metaMDS(data_mds) -> mds
+  stressplot(mds)
 }
 
+make_nMDSbis = function(data, species, score){
+  data %>% 
+    filter(`#specific peptides`>2) %>% 
+    filter(grepl(species,Organism)) %>% 
+    dplyr::select(`Protein accession`,sample,SC) %>% 
+    pivot_wider(id_cols = `Protein accession`,names_from=sample,values_from=SC) %>% 
+    mutate(SCsums = rowSums(across(where(is.numeric)))) %>% filter(SCsums > score) %>%
+    dplyr::select(-`Protein accession`,-SCsums) -> data_mds
+  metaMDS(data_mds) -> mds
+  mds$species %>% as.data.frame %>% mutate(sample = rownames(mds$species)) %>% 
+    ggplot() + geom_point(aes(x=MDS1,y=MDS2)) + geom_label_repel(aes(x=MDS1,y=MDS2,label=sample))+
+    theme_gray() + ggtitle("Non metric multi-dimensional scaling")
+}
 
-ui <- dashboardPage(skin ="green", 
-                    dashboardHeader(title = "Proteomic app",
-                                    tags$li(class="dropdown", tags$a(href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Prototypr_01", icon("github"), "Source Code", target="_blank")),
-                                    tags$li(class = "dropdown", tags$a(href = 'https://umr-astre.cirad.fr/', icon("home")))),
+## Make a PCA   ##
+
+make_pca_1 = function(data){  
+  data %>%
+    dplyr::select(NSAF, `Protein accession`,sample,Organism ) %>%
+    pivot_wider(names_from = sample, values_from = NSAF) -> cpa_data
+  cpa_data[complete.cases(cpa_data), ] -> cpa_data
+  row.names(cpa_data) <- cpa_data$`Protein accession`
+  PCA(cpa_data, scale.unit=TRUE, ncp=5, quali.sup=c(1:2), graph=F) -> res.pca
+  fviz_eig(res.pca, addlabels = TRUE, ylim = c(0, 50))
+}
+
+make_pca_2 = function(data){
+  data %>%
+    dplyr::select(NSAF, `Protein accession`,sample,Organism ) %>%
+    pivot_wider(names_from = sample, values_from = NSAF) -> cpa_data
+  cpa_data[complete.cases(cpa_data), ] -> cpa_data
+  row.names(cpa_data) <- cpa_data$`Protein accession`
+  PCA(cpa_data, scale.unit=TRUE, ncp=5, quali.sup=c(1:2), graph=F) -> res.pca
+  fviz_pca_var(res.pca, col.var = "contrib", 
+               gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = T, labelsize = 3)
+}
+
+make_pca_3 = function(data){
+  data %>%
+    dplyr::select(NSAF, `Protein accession`,sample,Organism ) %>%
+    pivot_wider(names_from = sample, values_from = NSAF) -> cpa_data
+  cpa_data[complete.cases(cpa_data), ] -> cpa_data
+  row.names(cpa_data) <- cpa_data$`Protein accession`
+  PCA(cpa_data, scale.unit=TRUE, ncp=5, quali.sup=c(1:2), graph=F) -> res.pca
+  fviz_pca_biplot(res.pca,
+                  col.ind = cpa_data$Organism, palette = "jco",  
+                  addEllipses = TRUE, label = "all", 
+                  col.var = "black", repel = TRUE, labelsize = 2,
+                  legend.title = "Organism")
+}
+
+##################################   UI    #####################################
+
+ui <- dashboardPage(skin ="green",
+                     dashboardHeader(title = "Proteomic app",
+                                     tags$li(class="dropdown", tags$a(href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Prototypr_01", icon("github"), "Source Code", target="_blank")),
+                                     tags$li(class = "dropdown", tags$a(href ='https://umr-astre.cirad.fr/publications/publications-scientifiques/flux-inra-et-cirad/pub.-agritrop-astre/risk-of-introduction-of-lumpy-skin-disease-in-france-by-the-import-of-vectors-in-animal-trucks', icon("info")))),
                     
-                    dashboardSidebar(sidebarMenu( 
-                      menuItem("Data uploader", tabName = "data_upload", icon = icon("file")),
-                      menuItem("Normality test", tabName = "norm", icon = icon("binoculars")),
-                      menuItem("Raw data", tabName = "raw_data", icon = icon("area-chart")),
-                      menuItem("Grouped data", tabName = "grouped_data", icon = icon("bar-chart"), chooseSliderSkin("Modern"),noUiSliderInput("MPS", "MPS lower threshold :", 0,250,20),
-                               menuSubItem("By sample", tabName = "by_sample", icon = icon("list-alt")),
-                               menuSubItem("Khi test", tabName = "khi_2", icon = icon("a fa-pencil"))
-                      ),
-                      menuItem("Source code", tabName = "source_code", icon = icon("code"))
-                      # tags$img(class = "Image", src ="https://p4.wallpaperbetter.com/wallpaper/670/178/355/dna-spiral-genetics-twisted-wallpaper-preview.jpg")
-                    )),
-                    
-                    dashboardBody(
-                      tags$head(
-                        tags$link(rel = "stylesheet", type = "text/css", href = "boostrap.min.css")
-                      ),
-                      tabItems(
-                        tabItem(tabName = "data_upload",
-                                fluidRow(h2(" The upload file will be used to perform", strong("the analysis")),
-                                  box(status = "success",width = '100%', fileInput(inputId = "filedata",
-                                                                                   label = "Upload peptide file. Choose xlsx file",
-                                                                                   accept = c(".xlsx")),
-                                      tags$style(".progress-bar {background-color: #5e437;}"),
-                                      
-                                      tags$hr(),
-                                      actionBttn("parse", "Parse dataset for analysis"), align = "center"
-                                  ),
-                                  box(status = "success", width = '100%', dataTableOutput("contents"), title = "Data overview", solidHeader = T)
-                                  
-                                )
-                        ),
-                        tabItem(tabName = "norm",
-                                fluidRow(
-                                  box( status = "success", title = "Is the distibution normal ?", solidHeader = T, plotOutput("normal")),
-                                  box( status = "success",title = "Kolmogorov-Smirnov test of normality",tags$hr(), uiOutput("Shapiro"))
-                                  )
-                                ),
-                        tabItem(tabName = "raw_data",
-                                fluidRow(
-                                  box(status = "success", title = "Summary of the data", solidHeader = T, tableOutput("summary")),
-                                  box(status = "success", title = "Sample figures", tableOutput("figures"))
-                                )
-                        ),
-                        tabItem(tabName = "by_sample",
-                                fluidRow(
-                                  box(status = "success", title = "Overview by sample", solidHeader = T, plotlyOutput("plot")),
-                                  box(status = "success", title = "Sample displayed", uiOutput("moreControls"))
-                                )
-                        ),
-                        tabItem(tabName = "khi_2",
-                                fluidRow(
-                                  box(status = "success", title = "Khi-2 test overview", solidHeader = T, dataTableOutput("heat")),
-                                  box(status = "success", title = "Khi-2 test between two samples", 
-                                      pickerInput(inputId = "box1", "Choose a sample", choices = NULL),
-                                      pickerInput(inputId = "box2", "Choose another", choices = NULL), tags$hr(),
-                                      verbatimTextOutput("Khi"), textOutput("khibis"))
-                                )
-                        ),
-                        tabItem(tabName = "source_code",
-                                fluidRow(
-                                  box(status = "success", title = "Get a report", solidHeader = T, downloadBttn("report","Report"), align="center"),
-                                  box(status = "success", title = "Get the code", solidHeader = T, uiOutput("code"), align="center")
-                                )
-                        )
-                      )
-                    )
+        dashboardSidebar(sidebarMenu(
+          menuItem("Welcome page", tabName = "welcome", icon = icon("home")), 
+          menuItem("Data uploader", tabName = "data_upload", icon = icon("upload")),
+          menuItem("Samples intersection", tabName = "inter", icon = icon("exchange"),
+                   menuSubItem("Overview", tabName = "view", icon =icon("vcard-o")),
+                   menuSubItem("Specific sets", tabName = "set", icon = icon("braille"))),
+          menuItem("Heatmap", tabName = "heatmap", icon = icon("sitemap")),
+          menuItem("Dimensionnal scaling", tabName = "scaling", icon =icon("line-chart"),
+                   menuSubItem(text = "nMDS", tabName = "NMDS", icon = icon("area-chart"), href = NULL),
+                   menuSubItem("PCA", tabName = "pca", icon = icon("area-chart"))),
+          menuItem("Get a report", tabName = "report", icon =icon("file-text-o")),
+          menuItem("Informations and sources", tabName = "Info", icon =icon(("book")))
+      )
+    ),
+    
+        dashboardBody(
+          tabItems(
+          tabItem(tabName = "welcome",
+                  fluidRow(
+                    box(status = "success", title = h2("Overview of the App"), tags$hr(),
+                        "blabla name and purpose"),
+                    box(status = "success", title = h3("Scheme of experiments"), tags$hr(),
+                        "shotgun mass spectrometry ..."))
+                  ),
+          tabItem(tabName = "data_upload",
+                  fluidRow(h2(" The upload file will be used to perform", strong("the analysis")),
+                           box(status = "success",width = '100%', fileInput(inputId = "filedata",
+                                                                            label = "Upload peptide file. Choose xlsx file",
+                                                                            accept = c(".xlsx")),
+                               tags$style(".progress-bar {background-color: #5e437;}"),
+                               
+                               tags$hr(),
+                               actionBttn("parse", "Parse dataset for analysis"), align = "center"
+                           ),
+                           box(status = "success", width = '100%', dataTableOutput("contents"), title = "Data overview", solidHeader = T))
+                  ),
+        tabItem(tabName = "view",
+                fluidRow(
+                  box(status = "success", title = "Protein in common between samples",width = '100%', solidHeader = T, plotOutput("upsetR")),
+                  box(status = "success", title = "Organism", uiOutput("moreControls")))
+                  ),
+        tabItem(tabName = "set",
+                fluidRow(
+                  box(status = "success", title = "Details", solidHeader = T, plotOutput("venn"), tableOutput("common")),
+                  box(status = "success", title = "Select samples to compare", uiOutput("samplecontrol")))
+                 ),
+        tabItem(tabName = "heatmap",
+                fluidRow(
+                  box(status = "success", width = '100%', title = "Links and differences within samples", plotOutput("heat"), uiOutput("moreControls_2")))
+                ),
+        tabItem(tabName = "NMDS",
+                fluidRow(
+                  box(status = "success", title = "Quality of stress optimization", plotOutput("stress"), uiOutput("moreControls_3"),
+                      tags$hr(), noUiSliderInput("score", "Filter by a minimum value of reading ", 15, 5000, 100)),
+                  box(status = "success", title = "Non-metric multidimensionnal scaling", plotOutput("MDS")))
+                ),
+        tabItem(tabName = "pca",
+                fluidRow(
+                  box(status = "success", title = "Principal component analysis", solidHeader = T, plotOutput("ACP")),
+                  box(status = "success", title = "Variance explained by dimensions", plotOutput("barplot")),
+                  box(status = "success", title = "Circle of representation quality", plotOutput("circle")))
+                ),
+        tabItem(tabName = "report",
+                fluidRow(
+                  box(status = "primary", title = "Get a report", solidHeader = T, downloadBttn("report","Report"), align="center"))
+                ),
+        tabItem(tabName = "Info",
+                fluidRow(
+                  box(status = "primary", title = "Citations", uiOutput("citation")),
+                  box(status = "primary", title = "Acknowledgment", uiOutput("ack")),
+                  box(status = "primary", title = "Sources", uiOutput("sources")))
+                )
+    )
+  )
 )
 
-options(shiny.maxRequestSize=30*1024^2)
-server <- function(input, output, session) {
+
+
+##################################   Server    #####################################
+
+server <- function(input, output, session){
   
-  dataparsed= reactiveVal(data.frame())
+## Reactive objects
+  
+  finaldata = reactiveVal(data.frame())
   samplelist = reactiveVal(c())
-  sampleshown = reactiveVal("")
-  Prot = reactiveVal(matrix())
-  N = reactiveVal(c())
-  A = reactiveVal(matrix())
-  index = reactiveVal(c())
+  organism = reactiveVal(c())
   
   
+  # Uploading and creating objects
   
   observeEvent(input$parse, {
-    dataparsed(read_and_parse(req(input$filedata$datapath)))
-    samplelist(dataparsed()$sample %>% unique)
-    Prot(tabyl(dataparsed(), Accession, sample))
-    sampleshown(samplelist()[1])
-    animateOptions(enter = "fadeInDown",duration = 3)
-    output$contents = renderDataTable(dataparsed())
-  })  
+    finaldata(parse_protein_file(req(input$filedata$datapath)))
+    samplelist(finaldata()$sample %>% unique)
+    organism(finaldata()$Organism %>% unique)
+    output$contents = renderDataTable(finaldata()[,1:8])
+  })
   
-  output$summary = renderTable(  
-    summary(dataparsed()[,2])
-    
-  )
-  
-  output$figures = renderTable(
-    dataparsed() %>% tabyl(sample)
-  )
-  
-  output$normal = renderPlot(
-    dataparsed() %>% ggplot(aes(x = `Mascot Peptide Score`)) +
-      geom_density(color="red", alpha=0.8)
-  )
-  
-  output$Shapiro = renderPrint(
-    dataparsed()$`Mascot Peptide Score` %>% ks.test("pnorm")
-  )
-  
-  output$plot = renderPlotly(
-    ggplotly(dataparsed() %>% filter(sample == input$sampleID & `Mascot Peptide Score` >= input$MPS)) + 
-      geom_histogram(aes(x=`Mascot Peptide Score`, fill = input$sampleID)) +
-      guides(fill=FALSE)
-  )
-  
-  output$moreControls = renderUI({
+    output$moreControls = renderUI({
     tagList(
-      awesomeRadio("sampleID","Choose sample:",samplelist())
+      awesomeRadio("organismID","Choose species:",organism())
     )
   })
   
-  observe({
-    updatePickerInput(session, "box1",
-                      label = "Choose a sample",
-                      choices = samplelist(),
-                      selected = NULL)
-    
-    updatePickerInput(session, "box2",
-                      label = "Choose another sample",
-                      choices = samplelist(),
-                      selected = NULL)
+  output$upsetR = renderPlot({
+   make_upset(finaldata(), samplelist(), input$organismID) 
   })
   
-  output$Khi = renderPrint({
-   khi_test(dataparsed(), input$box1, input$box2, input$MPS)
+  output$samplecontrol = renderUI({
+    tagList(
+      awesomeCheckboxGroup("control", "Select at least two samples", status = "success", choices = samplelist(), selected = NULL)
+    )
   })
   
+  #output$common = renderTable({})
+  #output$venn = renderPlot({})
+  
+  output$moreControls_2 = renderUI({
+    tagList(
+      awesomeRadio("organismID_2","Choose species:",organism())
+    )
+  })
+  
+  output$heatmap = renderPlot({
+    make_heatmap(finaldata(), samplelist(), input$organismID_2)
+  })
+  
+  output$moreControls_3 = renderUI({
+    tagList(
+      awesomeRadio("organismID_3","Choose species:",organism())
+    )
+  })
+  
+  output$stress = renderPlot({
+    make_nMDS(finaldata(), input$organismID_3, input$score)
+  })
+  
+  output$MDS = renderPlot({
+    make_nMDSbis(finaldata(), input$organismID_3, input$score)
+  })
+  
+  output$barplot = renderPlot({
+    make_pca_1(finaldata())
+  })
+  
+  output$circle = renderPlot({
+    make_pca_2(finaldata())
+  })
+  
+  output$ACP = renderPlot({
+    make_pca_3(finaldata())
+  })
 
-  
-  output$heat = renderPrint({
-    Heat_map(dataparsed(), samplelist())
-    })
-  
-
-  url <- a("here", href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Prototypr_01")
-  output$code <- renderUI({
-    tagList("To get the code please click :", url)
-  })
 }
+
+####################   App    #######################
 
 shinyApp(ui, server)
