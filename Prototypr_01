@@ -212,6 +212,7 @@ ui <- dashboardPage(skin ="green",
                   fluidRow(
                     box(status = "success", title = h2("Overview of the App"), tags$hr(),
                         "blabla name and purpose"),
+                    
                     box(status = "success", title = h3("Scheme of experiments"), tags$hr(),
                         "shotgun mass spectrometry ..."))
                   ),
@@ -230,41 +231,112 @@ ui <- dashboardPage(skin ="green",
         tabItem(tabName = "view",
                 fluidRow(
                   box(status = "success", title = "Protein in common between samples",width = '100%', solidHeader = T, plotOutput("upsetR")),
+                  
                   box(status = "success", title = "Organism", uiOutput("moreControls")))
                   ),
         tabItem(tabName = "set",
                 fluidRow(
                   box(status = "success", title = "Details", solidHeader = T, plotOutput("venn"), tableOutput("common")),
+                  
                   box(status = "success", title = "Select samples to compare", uiOutput("samplecontrol")))
                  ),
         tabItem(tabName = "heatmap",
                 fluidRow(
-                  box(status = "success", width = '100%', title = "Links and differences within samples", plotOutput("heat"), uiOutput("moreControls_2")))
+                  box(status = "success", width = '100%', title = "Links and differences within samples", plotOutput("heat"), uiOutput("moreControls_2"),
+                       tags$hr(),
+                        radioGroupButtons(
+                          inputId = "filetype_stressplot",
+                          label = "Choose file type to download:",
+                          choices = list("PDF", "PNG","SVG","TIFF")),
+                        
+                        actionBttn(inputId = "Stressplot", label = "Download Plot", style = "jelly", color = "warning")),
+                ))
                 ),
         tabItem(tabName = "NMDS",
                 fluidRow(
-                  box(status = "success", title = "Quality of stress optimization", plotOutput("stress"), uiOutput("moreControls_3"),
-                      tags$hr(), noUiSliderInput("score", "Filter by a minimum value of reading ", 15, 5000, 100)),
-                  box(status = "success", title = "Non-metric multidimensionnal scaling", plotOutput("MDS")))
+                  box(status = "success", width = 4, title = "Settings", solidHeader = T, uiOutput("moreControls_3"),
+                      tags$hr(), noUiSliderInput("score", "Filter by a minimum value of reading (SC sums in a column)", 15, 5000, 100)),
+                  
+                  box(status = "success", title = "Non-metric multidimensionnal scaling", width = 8,
+                      tabBox(height = "100%", width = "100%",
+                             
+                        tabPanel(title = "Quality of stress optimization", plotOutput("stress"),
+                                 
+                                 box(
+                                   width = NULL,  status = "warning",
+                                   radioGroupButtons(
+                                     inputId = "filetype_stressplot",
+                                     label = "Choose file type to download:",
+                                     choices = list("PDF", "PNG","SVG","TIFF")),
+                                   
+                                   actionBttn(inputId = "Stressplot", label = "Download Plot", style = "jelly", color = "warning"))),
+                        ),
+                      
+                        tabPanel(title = "Graphical display", plotOutput("MDS"),
+                                 box(
+                                   width = NULL,  status = "warning",
+                                   radioGroupButtons(
+                                     inputId = "filetype_nMDS",
+                                     label = "Choose file type to download:",
+                                     choices = list("PDF", "PNG","SVG","TIFF")),
+                                   
+                                   actionBttn(outputId = "nMDS", label = "Download Plot", style = "jelly", color = "warning")
+                                 ))))
                 ),
+        
         tabItem(tabName = "pca",
                 fluidRow(
-                  box(status = "success", title = "Principal component analysis", solidHeader = T, plotOutput("ACP")),
-                  box(status = "success", title = "Variance explained by dimensions", plotOutput("barplot")),
-                  box(status = "success", title = "Circle of representation quality", plotOutput("circle")))
+                  box(status = "success", tabBox(height = "100%", width = "100%",
+                                                 
+                    tabPanel(title = "Variance explained by dimensions", plotOutput("barplot"), 
+                             box(
+                               width = NULL,  status = "warning",
+                               radioGroupButtons(
+                                 inputId = "filetype_hist",
+                                 label = "Choose file type to download:",
+                                 choices = list("PDF", "PNG","SVG","TIFF")),
+                               
+                               actionBttn(outputId = "eigenhist", label = "Download Hist", style = "jelly", color = "warning")
+                             )),
+                    
+                    tabPanel(title = "Circle of representation quality", plotOutput("circle"),
+                             box(
+                               width = NULL,  status = "warning",
+                               radioGroupButtons(
+                                 inputId = "filetype_circle",
+                                 label = "Choose file type to download:",
+                                 choices = list("PDF", "PNG","SVG","TIFF")),
+                               
+                               actionBttn(outputId = "circepca", label = "Download Circle", style = "jelly", color = "warning")
+                             )),
+                    
+                    tabPanel(title = "Principal component analysis", plotOutput("ACP"),
+                             box(
+                               width = NULL,  status = "warning",
+                               radioGroupButtons(
+                                 inputId = "filetype_pca",
+                                 label = "Choose file type to download:",
+                                 choices = list("PDF", "PNG","SVG","TIFF")),
+                               
+                               actionBttn(outputId = "pca", label = "Download Plot", style = "jelly", color = "warning")
+                             )))))
                 ),
+        
         tabItem(tabName = "report",
                 fluidRow(
                   box(status = "primary", title = "Get a report", solidHeader = T, downloadBttn("report","Report"), align="center"))
                 ),
+        
         tabItem(tabName = "Info",
                 fluidRow(
                   box(status = "primary", title = "Citations", uiOutput("citation")),
+                  
                   box(status = "primary", title = "Acknowledgment", uiOutput("ack")),
+                  
                   box(status = "primary", title = "Sources", uiOutput("sources")))
                 )
     )
-  )
+  
 )
 
 
