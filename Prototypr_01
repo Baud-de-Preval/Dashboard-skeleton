@@ -21,8 +21,7 @@ library(d3heatmap)
 library(viridis)
 library(hrbrthemes)
 library(MASS)
-
-finaldata = parse_protein_file("C:/Users/Baudouin/OneDrive/Bureau/Cours/Stage/Stage Cirad/Shiny App/Li2D_MS21-001_Table S2_List of Proteins.xlsx")
+library(shinydlplot)
 
 #####################   Functions   ########################
 
@@ -64,9 +63,11 @@ parse_protein_file = function(filepath){
     tmp = cbind(tmp_global,sample_data)
     #bind rows from this sample total data with the previous ones
     finaldata = rbind(finaldata,tmp)
+    
   }
   return(finaldata)
 }
+organism =finaldata()$Organism %>% unique
 
 ## Make an UpsetR ##
 
@@ -86,17 +87,18 @@ make_upset = function(data, listof_sample, species){
 
 ## Make a heatmap ##
 
-make_heatmap = function(data, listof_sample, species){ 
+make_heatmap = function(data, listof_sample, species, min, max){ 
   data %>%
-    filter(`#specific peptides` > 2) %>%
+    filter(`Mascot score` > min & `Mascot score` < max) %>%
+    filter(sample %in% listof_sample) %>%
     pivot_wider(id_cols = c(`Protein accession`,Organism),names_from=sample,values_from=NSAF) -> widedata
   rownames = widedata$`Protein accession`
   organism = widedata$Organism
   organism %>% unique
   widedata %>% dplyr::select(-`Protein accession`, -Organism)  %>% as.matrix -> datamatrix
-  datamatrix[organism == species,] 
+  datamatrix[organism== species,] 
   rownames(datamatrix) = rownames
-  p <- heatmaply(t(datamatrix[organism ==species,]), 
+  p <- heatmaply(t(datamatrix[organism==species,]), 
                  dendrogram = T,
                  xlab = "", ylab = "", 
                  main = "",
@@ -171,7 +173,7 @@ make_pca_2 = function(data){
 }
 
 make_pca_3 = function(data){
-  data %>%
+  b <- data %>%
     dplyr::select(NSAF, `Protein accession`,sample,Organism ) %>%
     pivot_wider(names_from = sample, values_from = NSAF) -> cpa_data
   cpa_data[complete.cases(cpa_data), ] -> cpa_data
@@ -182,162 +184,127 @@ make_pca_3 = function(data){
                   addEllipses = TRUE, label = "all", 
                   col.var = "black", repel = TRUE, labelsize = 2,
                   legend.title = "Organism")
+  ggplotly(b, tooltip = cpa_data$`Protein accession`)
 }
 
 ##################################   UI    #####################################
 
 ui <- dashboardPage(skin ="green",
-                     dashboardHeader(title = "Proteomic app",
-                                     tags$li(class="dropdown", tags$a(href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Prototypr_01", icon("github"), "Source Code", target="_blank")),
-                                     tags$li(class = "dropdown", tags$a(href ='https://umr-astre.cirad.fr/publications/publications-scientifiques/flux-inra-et-cirad/pub.-agritrop-astre/risk-of-introduction-of-lumpy-skin-disease-in-france-by-the-import-of-vectors-in-animal-trucks', icon("info")))),
+                    dashboardHeader(title = "Proteomic app",
+                                    tags$li(class="dropdown", tags$a(href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Prototypr_01", icon("github"), "Source Code", target="_blank")),
+                                    tags$li(class ="dropdown", tags$a(href ='https://umr-astre.cirad.fr/publications/publications-scientifiques/flux-inra-et-cirad/pub.-agritrop-astre/risk-of-introduction-of-lumpy-skin-disease-in-france-by-the-import-of-vectors-in-animal-trucks', icon("info")))),
                     
-        dashboardSidebar(sidebarMenu(
-          menuItem("Welcome page", tabName = "welcome", icon = icon("home")), 
-          menuItem("Data uploader", tabName = "data_upload", icon = icon("upload")),
-          menuItem("Samples intersection", tabName = "inter", icon = icon("exchange"),
-                   menuSubItem("Overview", tabName = "view", icon =icon("vcard-o")),
-                   menuSubItem("Specific sets", tabName = "set", icon = icon("braille"))),
-          menuItem("Heatmap", tabName = "heatmap", icon = icon("sitemap")),
-          menuItem("Dimensionnal scaling", tabName = "scaling", icon =icon("line-chart"),
-                   menuSubItem(text = "nMDS", tabName = "NMDS", icon = icon("area-chart"), href = NULL),
-                   menuSubItem("PCA", tabName = "pca", icon = icon("area-chart"))),
-          menuItem("Get a report", tabName = "report", icon =icon("file-text-o")),
-          menuItem("Informations and sources", tabName = "Info", icon =icon(("book")))
-      )
-    ),
-    
-        dashboardBody(
-          tabItems(
-          tabItem(tabName = "welcome",
-                  fluidRow(
-                    box(status = "success", title = h2("Overview of the App"), tags$hr(),
-                        "blabla name and purpose"),
-                    
-                    box(status = "success", title = h3("Scheme of experiments"), tags$hr(),
-                        "shotgun mass spectrometry ..."))
-                  ),
-          tabItem(tabName = "data_upload",
-                  fluidRow(h2(" The upload file will be used to perform", strong("the analysis")),
-                           box(status = "success",width = '100%', fileInput(inputId = "filedata",
-                                                                            label = "Upload peptide file. Choose xlsx file",
-                                                                            accept = c(".xlsx")),
-                               tags$style(".progress-bar {background-color: #5e437;}"),
-                               
-                               tags$hr(),
-                               actionBttn("parse", "Parse dataset for analysis"), align = "center"
-                           ),
-                           box(status = "success", width = '100%', dataTableOutput("contents"), title = "Data overview", solidHeader = T))
-                  ),
-        tabItem(tabName = "view",
-                fluidRow(
-                  box(status = "success", title = "Protein in common between samples",width = '100%', solidHeader = T, plotOutput("upsetR")),
-                  
-                  box(status = "success", title = "Organism", uiOutput("moreControls")))
-                  ),
-        tabItem(tabName = "set",
-                fluidRow(
-                  box(status = "success", title = "Details", solidHeader = T, plotOutput("venn"), tableOutput("common")),
-                  
-                  box(status = "success", title = "Select samples to compare", uiOutput("samplecontrol")))
-                 ),
-        tabItem(tabName = "heatmap",
-                fluidRow(
-                  box(status = "success", width = '100%', title = "Links and differences within samples", plotOutput("heat"), uiOutput("moreControls_2"),
-                       tags$hr(),
-                        radioGroupButtons(
-                          inputId = "filetype_stressplot",
-                          label = "Choose file type to download:",
-                          choices = list("PDF", "PNG","SVG","TIFF")),
-                        
-                        actionBttn(inputId = "Stressplot", label = "Download Plot", style = "jelly", color = "warning")),
-                ))
-                ),
-        tabItem(tabName = "NMDS",
-                fluidRow(
-                  box(status = "success", width = 4, title = "Settings", solidHeader = T, uiOutput("moreControls_3"),
-                      tags$hr(), noUiSliderInput("score", "Filter by a minimum value of reading (SC sums in a column)", 15, 5000, 100)),
-                  
-                  box(status = "success", title = "Non-metric multidimensionnal scaling", width = 8,
-                      tabBox(height = "100%", width = "100%",
-                             
-                        tabPanel(title = "Quality of stress optimization", plotOutput("stress"),
-                                 
-                                 box(
-                                   width = NULL,  status = "warning",
-                                   radioGroupButtons(
-                                     inputId = "filetype_stressplot",
-                                     label = "Choose file type to download:",
-                                     choices = list("PDF", "PNG","SVG","TIFF")),
-                                   
-                                   actionBttn(inputId = "Stressplot", label = "Download Plot", style = "jelly", color = "warning"))),
-                        ),
+                    dashboardSidebar(sidebarMenu(
+                      menuItem("Welcome page", tabName = "welcome", icon = icon("home")), 
+                      menuItem("Data uploader", tabName = "data_upload", icon = icon("upload")),
+                      menuItem("Samples intersection", tabName = "inter", icon = icon("exchange"),
+                               menuSubItem("Overview", tabName = "view", icon =icon("vcard-o")),
+                               menuSubItem("Specific sets", tabName = "set", icon = icon("braille"))),
+                      menuItem("Heatmap", tabName = "heatmap", icon = icon("sitemap")),
+                      menuItem("Dimensionnal scaling", tabName = "scaling", icon =icon("line-chart"),
+                               menuSubItem(text = "nMDS", tabName = "NMDS", icon = icon("area-chart")),
+                               menuSubItem("PCA", tabName = "pca", icon = icon("area-chart"))),
+                      menuItem("Informations and sources", tabName = "Info", icon =icon("book")),
+                      menuItem(downloadButton("report", "Download yout report", align = 'center',style="color: #fff; background-color: #337ab7; border-color: #2e6da4")
                       
-                        tabPanel(title = "Graphical display", plotOutput("MDS"),
-                                 box(
-                                   width = NULL,  status = "warning",
-                                   radioGroupButtons(
-                                     inputId = "filetype_nMDS",
-                                     label = "Choose file type to download:",
-                                     choices = list("PDF", "PNG","SVG","TIFF")),
-                                   
-                                   actionBttn(outputId = "nMDS", label = "Download Plot", style = "jelly", color = "warning")
-                                 ))))
-                ),
-        
-        tabItem(tabName = "pca",
-                fluidRow(
-                  box(status = "success", tabBox(height = "100%", width = "100%",
-                                                 
-                    tabPanel(title = "Variance explained by dimensions", plotOutput("barplot"), 
-                             box(
-                               width = NULL,  status = "warning",
-                               radioGroupButtons(
-                                 inputId = "filetype_hist",
-                                 label = "Choose file type to download:",
-                                 choices = list("PDF", "PNG","SVG","TIFF")),
-                               
-                               actionBttn(outputId = "eigenhist", label = "Download Hist", style = "jelly", color = "warning")
-                             )),
+                    )
+                    )),
                     
-                    tabPanel(title = "Circle of representation quality", plotOutput("circle"),
-                             box(
-                               width = NULL,  status = "warning",
-                               radioGroupButtons(
-                                 inputId = "filetype_circle",
-                                 label = "Choose file type to download:",
-                                 choices = list("PDF", "PNG","SVG","TIFF")),
-                               
-                               actionBttn(outputId = "circepca", label = "Download Circle", style = "jelly", color = "warning")
-                             )),
-                    
-                    tabPanel(title = "Principal component analysis", plotOutput("ACP"),
-                             box(
-                               width = NULL,  status = "warning",
-                               radioGroupButtons(
-                                 inputId = "filetype_pca",
-                                 label = "Choose file type to download:",
-                                 choices = list("PDF", "PNG","SVG","TIFF")),
-                               
-                               actionBttn(outputId = "pca", label = "Download Plot", style = "jelly", color = "warning")
-                             )))))
-                ),
-        
-        tabItem(tabName = "report",
-                fluidRow(
-                  box(status = "primary", title = "Get a report", solidHeader = T, downloadBttn("report","Report"), align="center"))
-                ),
-        
-        tabItem(tabName = "Info",
-                fluidRow(
-                  box(status = "primary", title = "Citations", uiOutput("citation")),
-                  
-                  box(status = "primary", title = "Acknowledgment", uiOutput("ack")),
-                  
-                  box(status = "primary", title = "Sources", uiOutput("sources")))
-                )
+                    dashboardBody(
+                      tabItems(
+                        tabItem(tabName = "welcome",
+                                fluidRow(
+                                  box(status = "success", title = h2("Overview of the App"), tags$hr(),
+                                      "blabla name and purpose"),
+                                  
+                                  box(status = "success", title = h3("Scheme of experiments"), tags$hr(),
+                                      "shotgun mass spectrometry ..."))
+                        ),
+                        tabItem(tabName = "data_upload",
+                                fluidRow(h2(" The upload file will be used to perform", strong("the analysis")),
+                                         box(status = "success",width = '100%', fileInput(inputId = "filedata",
+                                                                                          label = "Upload peptide file. Choose xlsx file",
+                                                                                          accept = c(".xlsx")),
+                                             tags$style(".progress-bar {background-color: #5e437;}"),
+                                             
+                                             tags$hr(),
+                                             actionBttn("parse", "Parse dataset for analysis"), align = "center"
+                                         ),
+                                         box(status = "success", width = '100%', dataTableOutput("contents"), title = "Data overview", solidHeader = T))
+                        ),
+                        tabItem(tabName = "view",
+                                fluidRow(
+                                  box(status = "success", title = "Protein in common between samples",width = '100%', solidHeader = T, plotOutput("upsetR")),
+                                  
+                                  box(status = "success", title = "Organism", uiOutput("moreControls")))
+                        ),
+                        tabItem(tabName = "set",
+                                fluidRow(
+                                  box(status = "success", title = "Details", solidHeader = T, plotOutput("venn"), tableOutput("common")),
+                                  
+                                  box(status = "success", title = "Select samples to compare", uiOutput("samplecontrol")))
+                        ),
+                        tabItem(tabName = "heatmap",
+                                fluidRow(
+                                  box(status = "success", title = "Links and differences within samples", plotlyOutput("heat"),tags$hr(),align = 'center',
+                                           downloadBttn('dwl1', label = "Download Plot", style = "jelly", color = "warning")),
+                                      
+                                  box(status = "success",uiOutput("moreControls_2"), tags$hr(),
+                                       noUiSliderInput("limit", "Filter the protein by a minimum Mascot score", 15, 3000, c(2000, 2800))))
+                                  
+                      ),
+                      tabItem(tabName = "NMDS",
+                              fluidRow(
+                                box(status = "success", width = 4, title = "Settings", solidHeader = T, uiOutput("moreControls_3"),
+                                    tags$hr(), noUiSliderInput("score", "Filter by a minimum value of reading (SC sums in a column)", 15, 5000, 100)),
+                                
+                                box(status = "success", title = "Non-metric multidimensionnal scaling", width = 8,
+                                    tabBox(height = "100%", width = "100%",
+                                           
+                                    tabPanel(type = "tabs", title = "Quality of stress optimization", plotOutput("stress"),
+                                             tags$hr(),align = 'center',
+                                             downloadBttn('dwl2', label = "Download Plot", style = "jelly", color = "warning")
+                                    ),
+                                    
+                                    tabPanel(type = "tabs", title = "Graphical display", plotOutput("MDS"),
+                                             tags$hr(),align = 'center',
+                                             downloadBttn('dwl3', label = "Download Plot", style = "jelly", color = "warning")
+                                             )))
+                      )),
+                      
+                      tabItem(tabName = "pca",
+                              fluidRow(
+                                box(status = "success", width = "100%", tabBox(height = "100%", width = "100%",
+                                                               
+                                                               tabPanel(type = "tabs", title = "Variance explained by dimensions", plotOutput("barplot"), 
+                                                                        tags$hr(),align = 'center',
+                                                                        downloadBttn('dwl4', label = "Download Plot", style = "jelly", color = "warning")
+                                                                        ),
+                                                               
+                                                               tabPanel(type = "tabs", title = "Circle of representation quality", plotOutput("circle"),
+                                                                        tags$hr(),align = 'center',
+                                                                        downloadBttn('dwl5', label = "Download Plot", style = "jelly", color = "warning")
+                                                                        ),
+                                                               
+                                                               tabPanel(type = "tabs", title = "Principal component analysis", plotlyOutput("ACP"),
+                                                                        tags$hr(),align = 'center',
+                                                                        downloadBttn('dwl6', label = "Download Plot", style = "jelly", color = "warning")
+                                                                        ))))
+                      ),
+                      
+                      tabItem(tabName = "Info",
+                              fluidRow(
+                                box(status = "primary", title = "Citations", uiOutput("citation")),
+                                
+                                box(status = "primary", title = "Acknowledgment", uiOutput("ack")),
+                                
+                                box(status = "primary", title = "Sources", uiOutput("sources")))
+      )
     )
-  
+  )                 
 )
+
+
 
 
 
@@ -345,14 +312,13 @@ ui <- dashboardPage(skin ="green",
 
 server <- function(input, output, session){
   
-## Reactive objects
+  ## Reactive objects
   
   finaldata = reactiveVal(data.frame())
   samplelist = reactiveVal(c())
   organism = reactiveVal(c())
-  
-  
-  # Uploading and creating objects
+
+    # Uploading and creating objects
   
   observeEvent(input$parse, {
     finaldata(parse_protein_file(req(input$filedata$datapath)))
@@ -361,14 +327,14 @@ server <- function(input, output, session){
     output$contents = renderDataTable(finaldata()[,1:8])
   })
   
-    output$moreControls = renderUI({
+  output$moreControls = renderUI({
     tagList(
       awesomeRadio("organismID","Choose species:",organism())
     )
   })
   
   output$upsetR = renderPlot({
-   make_upset(finaldata(), samplelist(), input$organismID) 
+    make_upset(finaldata(), samplelist(), input$organismID) 
   })
   
   output$samplecontrol = renderUI({
@@ -386,10 +352,11 @@ server <- function(input, output, session){
     )
   })
   
-  output$heatmap = renderPlot({
-    make_heatmap(finaldata(), samplelist(), input$organismID_2)
-  })
+  output$heat = renderPlotly({
+    make_heatmap(finaldata(), samplelist(), input$organismID_2, input$limit[1], input$limit[2])
+    })
   
+
   output$moreControls_3 = renderUI({
     tagList(
       awesomeRadio("organismID_3","Choose species:",organism())
@@ -416,6 +383,31 @@ server <- function(input, output, session){
     make_pca_3(finaldata())
   })
 
+  ## Download plots
+  
+  output$dwl1 <- downloadHandler(
+    filename = function() {
+      paste("Heatmap", ".png", sep="")
+    },
+    content = function(file) {
+      png(make_heatmap(finaldata(), samplelist(), input$organismID_2, input$limit[1], input$limit[2]))
+    }
+  )
+  
+  
+  ## Download report
+  
+  output$report <- downloadHandler(
+    filename = "report.html",
+    content = function(file) {
+      tempReport <- file.path(tempdir(), "Report.Rmd")
+      file.copy("Report.Rmd", tempReport, overwrite = TRUE)
+      rmarkdown::render(tempReport, output_file = file,
+                        params = params,
+                        envir = new.env(parent = globalenv())
+      )
+    }
+  )
 }
 
 ####################   App    #######################
