@@ -22,6 +22,8 @@ library(viridis)
 library(hrbrthemes)
 library(MASS)
 library(shinydlplot)
+library(ggvenn)
+library(shinyalert)
 
 #####################   Functions   ########################
 
@@ -63,11 +65,9 @@ parse_protein_file = function(filepath){
     tmp = cbind(tmp_global,sample_data)
     #bind rows from this sample total data with the previous ones
     finaldata = rbind(finaldata,tmp)
-    
   }
   return(finaldata)
 }
-organism =finaldata()$Organism %>% unique
 
 ## Make an UpsetR ##
 
@@ -168,32 +168,45 @@ make_pca_2 = function(data){
   cpa_data[complete.cases(cpa_data), ] -> cpa_data
   row.names(cpa_data) <- cpa_data$`Protein accession`
   PCA(cpa_data, scale.unit=TRUE, ncp=5, quali.sup=c(1:2), graph=F) -> res.pca
-  fviz_pca_var(res.pca, col.var = "contrib", 
-               gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = T, labelsize = 3)
+  ggplot(fviz_pca_var(res.pca, col.var = "contrib", 
+               gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = T, labelsize = 3))
 }
 
-make_pca_3 = function(data){
+make_pca_3 = function(data, bestkeeping){
   b <- data %>%
     dplyr::select(NSAF, `Protein accession`,sample,Organism ) %>%
     pivot_wider(names_from = sample, values_from = NSAF) -> cpa_data
   cpa_data[complete.cases(cpa_data), ] -> cpa_data
   row.names(cpa_data) <- cpa_data$`Protein accession`
-  PCA(cpa_data, scale.unit=TRUE, ncp=5, quali.sup=c(1:2), graph=F) -> res.pca
+  PCA(cpa_data, scale.unit=TRUE, ncp=5, quali.sup=c(1:2), graph=F) -> res.pca  
+  if (missing(bestkeeping)){
   fviz_pca_biplot(res.pca,
                   col.ind = cpa_data$Organism, palette = "jco",  
                   addEllipses = TRUE, label = "all", 
                   col.var = "black", repel = TRUE, labelsize = 2,
                   legend.title = "Organism")
-  ggplotly(b, tooltip = cpa_data$`Protein accession`)
+  ggplot(b, tooltip = cpa_data$`Protein accession`)}
+  else {
+    fviz_pca_biplot(res.pca,
+                    col.ind = cpa_data$Organism, palette = "jco",  
+                    addEllipses = TRUE, label = "all", 
+                    col.var = "black", repel = TRUE, labelsize = 2,
+                    
+                    legend.title = "Organism")
+    ggplot(b, select = paste("coord", bestkeeping, sep = ""), tooltip = cpa_data$`Protein accession`)
+  }
 }
 
 ##################################   UI    #####################################
 
-ui <- dashboardPage(skin ="green",
-                    dashboardHeader(title = "Proteomic app",
+ui <- dashboardPage(skin ="green", 
+                    dashboardHeader(title = tags$a(href='https://umr-astre.cirad.fr/',
+                                                   tags$img(src='https://www.gds974.com/wp-content/uploads/2018/02/logo-cirad-avec-texte.jpg',  height='80',width='200')),
                                     tags$li(class="dropdown", tags$a(href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Prototypr_01", icon("github"), "Source Code", target="_blank")),
-                                    tags$li(class ="dropdown", tags$a(href ='https://umr-astre.cirad.fr/publications/publications-scientifiques/flux-inra-et-cirad/pub.-agritrop-astre/risk-of-introduction-of-lumpy-skin-disease-in-france-by-the-import-of-vectors-in-animal-trucks', icon("info")))),
-                    
+                                    tags$li(class ="dropdown", tags$a(href ='https://umr-astre.cirad.fr/publications/publications-scientifiques/flux-inra-et-cirad/pub.-agritrop-astre/risk-of-introduction-of-lumpy-skin-disease-in-france-by-the-import-of-vectors-in-animal-trucks', icon("info"))),
+                                    tags$li(class = "dropdown", useShinyalert(), dropdownButton(inputId = "contact", label = "",status = "success", icon = icon('envelope')) 
+                                            )),
+                                            
                     dashboardSidebar(sidebarMenu(
                       menuItem("Welcome page", tabName = "welcome", icon = icon("home")), 
                       menuItem("Data uploader", tabName = "data_upload", icon = icon("upload")),
@@ -205,7 +218,7 @@ ui <- dashboardPage(skin ="green",
                                menuSubItem(text = "nMDS", tabName = "NMDS", icon = icon("area-chart")),
                                menuSubItem("PCA", tabName = "pca", icon = icon("area-chart"))),
                       menuItem("Informations and sources", tabName = "Info", icon =icon("book")),
-                      menuItem(downloadButton("report", "Download yout report", align = 'center',style="color: #fff; background-color: #337ab7; border-color: #2e6da4")
+                      menuItem(downloadButton("report", "Download your report", align = 'center',style="color: #fff; background-color: #228b22; border-color: #32cd32")
                       
                     )
                     )),
@@ -214,16 +227,24 @@ ui <- dashboardPage(skin ="green",
                       tabItems(
                         tabItem(tabName = "welcome",
                                 fluidRow(
-                                  box(status = "success", title = h2("Overview of the App"), tags$hr(),
-                                      "blabla name and purpose"),
+                                  box(status = "success", width ="100%", title = h2("Overview of the App"), tags$hr(),
+                                      strong("Welcome !"),"This App will help you to vizualise briefly your results
+                                      from your proteomic experiments. From a ", strong("xlsx file"),", you will get a general overview 
+                                      on your datas through few classic representations, figures and statistics."),
                                   
-                                  box(status = "success", title = h3("Scheme of experiments"), tags$hr(),
-                                      "shotgun mass spectrometry ..."))
+                                  box(status = "success", width ="100%", title = h3("Experiments"), tags$hr(), tags$img(), tags$hr(),
+                                      "This Shiny App has been developed during a three months internship at", strong("CIRAD"), "concomitantly with a study
+                                      on Neethling virus (see paper at this link : ). But the App is designed to treat any data obtained from 
+                                      mass spectrometry including several organisms. It might still receive updates in the future."))
                         ),
                         tabItem(tabName = "data_upload",
-                                fluidRow(h2(" The upload file will be used to perform", strong("the analysis")),
+                                fluidRow(
+                                  box(status = "success", width = '100%', "First, please make sure that your file is well parsed. Here is an",
+                                      downloadLink('downloadData', 'example'), "of a tidy file. 
+                                      The fist x columns must be in the upload file then each sample must take ", strong("a three colums space"),". Once you have the right format, please upload the file :"),
+                                
                                          box(status = "success",width = '100%', fileInput(inputId = "filedata",
-                                                                                          label = "Upload peptide file. Choose xlsx file",
+                                                                                          label = "Choose xlsx file",
                                                                                           accept = c(".xlsx")),
                                              tags$style(".progress-bar {background-color: #5e437;}"),
                                              
@@ -240,14 +261,18 @@ ui <- dashboardPage(skin ="green",
                         ),
                         tabItem(tabName = "set",
                                 fluidRow(
-                                  box(status = "success", title = "Details", solidHeader = T, plotOutput("venn"), tableOutput("common")),
+                                  box(status = "success", title = "Details", solidHeader = T, plotOutput("venn"), tags$hr(), align = 'center',
+                                      downloadBttn('dwl1', label = "Download Plot", style = "jelly", color = "warning")),
                                   
-                                  box(status = "success", title = "Select samples to compare", uiOutput("samplecontrol")))
+                                  box(status = "success", title = "Select samples to compare", uiOutput("samplecontrol"), 
+                                  tags$hr(), pickerInput("option", label = "View interactions",
+                                                         choices = c("Intersection", "Union","Exclusive"),
+                                                         choicesOpt = list(icon = c("handshake-o","random", "exclamation"))), uiOutput("connexion")))
                         ),
                         tabItem(tabName = "heatmap",
                                 fluidRow(
                                   box(status = "success", title = "Links and differences within samples", plotlyOutput("heat"),tags$hr(),align = 'center',
-                                           downloadBttn('dwl1', label = "Download Plot", style = "jelly", color = "warning")),
+                                           downloadBttn('dwl2', label = "Download Plot", style = "jelly", color = "warning")),
                                       
                                   box(status = "success",uiOutput("moreControls_2"), tags$hr(),
                                        noUiSliderInput("limit", "Filter the protein by a minimum Mascot score", 15, 3000, c(2000, 2800))))
@@ -263,12 +288,12 @@ ui <- dashboardPage(skin ="green",
                                            
                                     tabPanel(type = "tabs", title = "Quality of stress optimization", plotOutput("stress"),
                                              tags$hr(),align = 'center',
-                                             downloadBttn('dwl2', label = "Download Plot", style = "jelly", color = "warning")
+                                             downloadBttn('dwl3', label = "Download Plot", style = "jelly", color = "warning")
                                     ),
                                     
                                     tabPanel(type = "tabs", title = "Graphical display", plotOutput("MDS"),
                                              tags$hr(),align = 'center',
-                                             downloadBttn('dwl3', label = "Download Plot", style = "jelly", color = "warning")
+                                             downloadBttn('dwl4', label = "Download Plot", style = "jelly", color = "warning")
                                              )))
                       )),
                       
@@ -278,31 +303,36 @@ ui <- dashboardPage(skin ="green",
                                                                
                                                                tabPanel(type = "tabs", title = "Variance explained by dimensions", plotOutput("barplot"), 
                                                                         tags$hr(),align = 'center',
-                                                                        downloadBttn('dwl4', label = "Download Plot", style = "jelly", color = "warning")
+                                                                        downloadBttn('dwl5', label = "Download Plot", style = "jelly", color = "warning")
                                                                         ),
                                                                
                                                                tabPanel(type = "tabs", title = "Circle of representation quality", plotOutput("circle"),
                                                                         tags$hr(),align = 'center',
-                                                                        downloadBttn('dwl5', label = "Download Plot", style = "jelly", color = "warning")
+                                                                        downloadBttn('dwl6', label = "Download Plot", style = "jelly", color = "warning")
                                                                         ),
                                                                
-                                                               tabPanel(type = "tabs", title = "Principal component analysis", plotlyOutput("ACP"),
-                                                                        tags$hr(),align = 'center',
-                                                                        downloadBttn('dwl6', label = "Download Plot", style = "jelly", color = "warning")
+                                                               tabPanel(type = "tabs", title = "Principal component analysis", plotOutput("ACP"),
+                                                                        tags$hr(), sliderInput("best","Keep the best representated individuals", 1, 20, 10), switchInput("off"),tags$hr(), align = 'center',
+                                                                        downloadBttn('dwl7', label = "Download Plot", style = "jelly", color = "warning")
                                                                         ))))
                       ),
                       
                       tabItem(tabName = "Info",
                               fluidRow(
-                                box(status = "primary", title = "Citations", uiOutput("citation")),
+                                box(status = "success", width ="100%", solidHeader = T, title = "Sources", tags$div(tags$ul(
+                                  tags$li(tags$span("Gouveia, D., Pible, O., Culotta, K. et al. Combining proteogenomics and metaproteomics for deep taxonomic and functional characterization of microbiomes from a non-sequenced host. npj Biofilms Microbiomes 6, 23 (2020).",tags$a(href="https://doi.org/10.1038/s41522-020-0133-2","https://doi.org/10.1038/s41522-020-0133-2"))),
+                                  tags$li(tags$span("test2")),
+                                  tags$li(tags$span("Inspired by : Khan A, Mathelier A. Intervene: a tool for intersection and visualization of multiple gene or genomic region sets. BMC Bioinformatics. 2017;18:287.", tags$a(href ="https://doi.org/10.1186/s12859-017-1708-7", "https://doi.org/10.1186/s12859-017-1708-7"))),
+                                  tags$hr(),
+                                  strong("More info in :"), "Alexey I. Nesvizhskii, A survey of computational methods and error rate estimation procedures for peptide and protein identification in shotgun proteomics. 2010.",tags$a(href="https://doi.org/10.1016/j.jprot.2010.08.009", "https://doi.org/10.1016/j.jprot.2010.08.009")))),
                                 
-                                box(status = "primary", title = "Acknowledgment", uiOutput("ack")),
+                                box(status = "success", title = "Acknowledgment", uiOutput("ack")))
                                 
-                                box(status = "primary", title = "Sources", uiOutput("sources")))
       )
     )
   )                 
 )
+
 
 
 
@@ -317,6 +347,12 @@ server <- function(input, output, session){
   finaldata = reactiveVal(data.frame())
   samplelist = reactiveVal(c())
   organism = reactiveVal(c())
+  
+  ## Pop-up window
+  
+  observeEvent(input$contact,{
+    shinyalert(title = "Contact us !",html = T, text = "If you have any remarks or questions, please feel free to contact us at : mail@.com", type = "info")
+  })
 
     # Uploading and creating objects
   
@@ -343,8 +379,22 @@ server <- function(input, output, session){
     )
   })
   
-  #output$common = renderTable({})
-  #output$venn = renderPlot({})
+  output$connexion = renderUI({
+    if (input$option == "Intersection"){
+      Set1
+    }
+    else if (input$option == "Union"){
+      Set2
+    }
+    else {
+      Set3
+    }
+  })
+  
+  output$venn = renderPlot({
+    ggplotly(ggvenn(list(set1), fill_color = c("#0073C2FF", "#EFC000FF", "#868686FF", "#CD534CFF"),
+           stroke_size = 0.5, set_name_size = 4))
+  })
   
   output$moreControls_2 = renderUI({
     tagList(
@@ -380,10 +430,24 @@ server <- function(input, output, session){
   })
   
   output$ACP = renderPlot({
+    if (input$off == FALSE){
     make_pca_3(finaldata())
+      }
+    else {
+    make_pca_3(finaldata(), input$best)
+    }
   })
 
   ## Download plots
+  
+  output$downloadData <- downloadHandler(
+  filename = function() {
+    paste('List_of_Protein', Sys.Date(), '.csv', sep='')
+  },
+ content = function(con) {
+    write_excel_csv2(List_of_Protein, con)
+ }
+)
   
   output$dwl1 <- downloadHandler(
     filename = function() {
@@ -394,7 +458,7 @@ server <- function(input, output, session){
     }
   )
   
-  
+
   ## Download report
   
   output$report <- downloadHandler(
