@@ -71,7 +71,7 @@ parse_protein_file = function(filepath){
 
 ## Make an UpsetR ##
 
-make_upset = function(data, listof_sample, species){
+make_upset = function(data, listof_sample, species, order){
   data %>% 
     filter(`#specific peptides`>1) %>% 
     filter(grepl(species,Organism)) %>% 
@@ -80,7 +80,7 @@ make_upset = function(data, listof_sample, species){
     pivot_wider(id_cols = `Protein accession`,names_from=sample,values_from=SC)  %>%
     as.data.frame -> updata 
   updata[is.na(updata)] <- 0
-  upset(updata, nsets = length(listof_sample), order.by = "freq",number.angles = 30, point.size = 4, line.size = 1.5, 
+  upset(updata, nsets = length(listof_sample), order.by = order, number.angles = 30, point.size = 4, line.size = 1.5, 
         mainbar.y.label = "Protein Intersections", sets.x.label = "Protein per sample", 
         text.scale = c(2, 2, 1, 1, 1.2, 2), main.bar.color = "steelblue")
 }
@@ -168,39 +168,29 @@ make_pca_2 = function(data){
   cpa_data[complete.cases(cpa_data), ] -> cpa_data
   row.names(cpa_data) <- cpa_data$`Protein accession`
   PCA(cpa_data, scale.unit=TRUE, ncp=5, quali.sup=c(1:2), graph=F) -> res.pca
-  ggplot(fviz_pca_var(res.pca, col.var = "contrib", 
-               gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = T, labelsize = 3))
+  fviz_pca_var(res.pca, col.var = "contrib", 
+               gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = T, labelsize = 3)
 }
 
-make_pca_3 = function(data, bestkeeping){
-  b <- data %>%
-    dplyr::select(NSAF, `Protein accession`,sample,Organism ) %>%
-    pivot_wider(names_from = sample, values_from = NSAF) -> cpa_data
-  cpa_data[complete.cases(cpa_data), ] -> cpa_data
-  row.names(cpa_data) <- cpa_data$`Protein accession`
-  PCA(cpa_data, scale.unit=TRUE, ncp=5, quali.sup=c(1:2), graph=F) -> res.pca  
-  if (missing(bestkeeping)){
-  fviz_pca_biplot(res.pca,
-                  col.ind = cpa_data$Organism, palette = "jco",  
-                  addEllipses = TRUE, label = "all", 
-                  col.var = "black", repel = TRUE, labelsize = 2,
-                  legend.title = "Organism")
-  ggplot(b, tooltip = cpa_data$`Protein accession`)}
-  else {
-    fviz_pca_biplot(res.pca,
-                    col.ind = cpa_data$Organism, palette = "jco",  
-                    addEllipses = TRUE, label = "all", 
-                    col.var = "black", repel = TRUE, labelsize = 2,
-                    
-                    legend.title = "Organism")
-    ggplot(b, select = paste("coord", bestkeeping, sep = ""), tooltip = cpa_data$`Protein accession`)
-  }
+make_pca_3 = function(data, ellipse){
+  b <- fviz_pca_biplot(res.pca,
+                       col.ind = cpa_data$Organism, palette = "jco",  
+                       addEllipses = ellipse,label = "var", tooltip =c("text"), 
+                       col.var = "black", repel = TRUE, labelsize = 2,
+                       legend.title = "Organisms :")
+  ggly <- ggplotly(b)
+  bggly <- plotly_build(ggly)
+  bggly$x$data[[1]]$text <- 
+    with(b$data, paste0("Protein: ", name))
+  bggly$x$data[[2]]$text <-
+    with(b$data, paste0("Protein: ",name ))
+  bggly 
 }
 
 ##################################   UI    #####################################
 
 ui <- dashboardPage(skin ="green", 
-                    dashboardHeader(title = tags$a(href='https://umr-astre.cirad.fr/',
+                    dashboardHeader(title = tags$a(href='https://umr-astre.cirad.fr/', windowTitle =" Neethling Prot",
                                                    tags$img(src='https://www.gds974.com/wp-content/uploads/2018/02/logo-cirad-avec-texte.jpg',  height='80',width='200')),
                                     tags$li(class="dropdown", tags$a(href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Prototypr_01", icon("github"), "Source Code", target="_blank")),
                                     tags$li(class ="dropdown", tags$a(href ='https://umr-astre.cirad.fr/publications/publications-scientifiques/flux-inra-et-cirad/pub.-agritrop-astre/risk-of-introduction-of-lumpy-skin-disease-in-france-by-the-import-of-vectors-in-animal-trucks', icon("info"))),
@@ -223,11 +213,12 @@ ui <- dashboardPage(skin ="green",
                     )
                     )),
                     
-                    dashboardBody(
+                    dashboardBody(tags$head(tags$style(HTML('/* logo */.skin-green .main-header .logo {background-color: #ffffff;}
+                                                             /* logo when hovered */.skin-green .main-header .logo:hover {background-color: #ffffff;}'))),
                       tabItems(
                         tabItem(tabName = "welcome",
                                 fluidRow(
-                                  box(status = "success", width ="100%", title = h2("Overview of the App"), tags$hr(),
+                                  box(status = "success", width ="100%", align ="center", title = h2("Neethling Prot", align = "center"), tags$hr(),
                                       strong("Welcome !"),"This App will help you to vizualise briefly your results
                                       from your proteomic experiments. From a ", strong("xlsx file"),", you will get a general overview 
                                       on your datas through few classic representations, figures and statistics."),
@@ -257,7 +248,14 @@ ui <- dashboardPage(skin ="green",
                                 fluidRow(
                                   box(status = "success", title = "Protein in common between samples",width = '100%', solidHeader = T, plotOutput("upsetR")),
                                   
-                                  box(status = "success", title = "Organism", uiOutput("moreControls")))
+                                  box(status = "success", title = "Organism", uiOutput("moreControls")),
+                                  
+                                  box(status = "success", title = "Order by", solidHeader = T, align ="center", radioGroupButtons(
+                                        inputId = "order",
+                                        label = "Please choose:", 
+                                        choices = c("freq", "degree"),
+                                        status = "success")
+                                  ))
                         ),
                         tabItem(tabName = "set",
                                 fluidRow(
@@ -311,8 +309,8 @@ ui <- dashboardPage(skin ="green",
                                                                         downloadBttn('dwl6', label = "Download Plot", style = "jelly", color = "warning")
                                                                         ),
                                                                
-                                                               tabPanel(type = "tabs", title = "Principal component analysis", plotOutput("ACP"),
-                                                                        tags$hr(), sliderInput("best","Keep the best representated individuals", 1, 20, 10), switchInput("off"),tags$hr(), align = 'center',
+                                                               tabPanel(type = "tabs", title = "Principal component analysis", plotlyOutput("ACP"),
+                                                                        tags$hr(), h4(strong("Display ellipses :")), switchInput("off"),tags$hr(), align = 'center',
                                                                         downloadBttn('dwl7', label = "Download Plot", style = "jelly", color = "warning")
                                                                         ))))
                       ),
@@ -324,7 +322,7 @@ ui <- dashboardPage(skin ="green",
                                   tags$li(tags$span("test2")),
                                   tags$li(tags$span("Inspired by : Khan A, Mathelier A. Intervene: a tool for intersection and visualization of multiple gene or genomic region sets. BMC Bioinformatics. 2017;18:287.", tags$a(href ="https://doi.org/10.1186/s12859-017-1708-7", "https://doi.org/10.1186/s12859-017-1708-7"))),
                                   tags$hr(),
-                                  strong("More info in :"), "Alexey I. Nesvizhskii, A survey of computational methods and error rate estimation procedures for peptide and protein identification in shotgun proteomics. 2010.",tags$a(href="https://doi.org/10.1016/j.jprot.2010.08.009", "https://doi.org/10.1016/j.jprot.2010.08.009")))),
+                                  strong("More info avalaible at :"), "Alexey I. Nesvizhskii, A survey of computational methods and error rate estimation procedures for peptide and protein identification in shotgun proteomics. 2010.",tags$a(href="https://doi.org/10.1016/j.jprot.2010.08.009", "https://doi.org/10.1016/j.jprot.2010.08.009")))),
                                 
                                 box(status = "success", title = "Acknowledgment", uiOutput("ack")))
                                 
@@ -370,7 +368,7 @@ server <- function(input, output, session){
   })
   
   output$upsetR = renderPlot({
-    make_upset(finaldata(), samplelist(), input$organismID) 
+    make_upset(finaldata(), samplelist(), input$organismID, input$order) 
   })
   
   output$samplecontrol = renderUI({
@@ -429,12 +427,12 @@ server <- function(input, output, session){
     make_pca_2(finaldata())
   })
   
-  output$ACP = renderPlot({
+  output$ACP = renderPlotly({
     if (input$off == FALSE){
-    make_pca_3(finaldata())
+    make_pca_3(finaldata(), FALSE)
       }
     else {
-    make_pca_3(finaldata(), input$best)
+    make_pca_3(finaldata(), TRUE)
     }
   })
 
