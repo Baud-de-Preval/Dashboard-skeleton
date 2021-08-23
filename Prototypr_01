@@ -71,7 +71,7 @@ parse_protein_file = function(filepath){
 
 ## Make an UpsetR ##
 
-make_upset = function(data, listof_sample, species, order){
+make_upset = function(data, listof_sample, species, order, pace){
   data %>% 
     filter(`#specific peptides`>1) %>% 
     filter(grepl(species,Organism)) %>% 
@@ -80,7 +80,7 @@ make_upset = function(data, listof_sample, species, order){
     pivot_wider(id_cols = `Protein accession`,names_from=sample,values_from=SC)  %>%
     as.data.frame -> updata 
   updata[is.na(updata)] <- 0
-  upset(updata, nsets = length(listof_sample), order.by = order, number.angles = 30, point.size = 4, line.size = 1.5, 
+  upset(updata, nsets = length(listof_sample), order.by = order, decreasing = pace, number.angles = 30, point.size = 4, line.size = 1.5, 
         mainbar.y.label = "Protein Intersections", sets.x.label = "Protein per sample", 
         text.scale = c(2, 2, 1, 1, 1.2, 2), main.bar.color = "steelblue")
 }
@@ -135,9 +135,9 @@ make_nMDS = function(data, species, score){
   stressplot(mds)
 }
 
-make_nMDSbis = function(data, species, score){
+make_nMDSbis = function(data, species, score, supp){
   data %>% 
-    filter(`#specific peptides`>2) %>% 
+    filter(`#specific peptides`>1) %>% 
     filter(grepl(species,Organism)) %>% 
     dplyr::select(`Protein accession`,sample,SC) %>% 
     pivot_wider(id_cols = `Protein accession`,names_from=sample,values_from=SC) %>% 
@@ -145,8 +145,9 @@ make_nMDSbis = function(data, species, score){
     dplyr::select(-`Protein accession`,-SCsums) -> data_mds
   metaMDS(data_mds) -> mds
   mds$species %>% as.data.frame %>% mutate(sample = rownames(mds$species)) %>% 
-    ggplot() + geom_point(aes(x=MDS1,y=MDS2)) + geom_label_repel(aes(x=MDS1,y=MDS2,label=sample))+
-    theme_gray() + ggtitle("Non metric multi-dimensional scaling")
+    ggplot(aes(x=MDS1, y=MDS2, color= supp$Position, shape = supp$TCA)) + 
+    geom_point(size=6) + geom_label_repel(aes(x=MDS1,y=MDS2,label=sample))+ scale_colour_discrete("Position") +
+    scale_shape_discrete("TCA") + theme_gray()
 }
 
 ## Make a PCA   ##
@@ -250,11 +251,14 @@ ui <- dashboardPage(skin ="green",
                                   
                                   box(status = "success", title = "Organism", uiOutput("moreControls")),
                                   
-                                  box(status = "success", title = "Order by", solidHeader = T, align ="center", radioGroupButtons(
+                                  box(status = "success", title = "Order by", align ="center", radioGroupButtons(
                                         inputId = "order",
-                                        label = "Please choose:", 
                                         choices = c("freq", "degree"),
-                                        status = "success")
+                                        status = "success"), tags$hr(),
+                                      switchInput(
+                                          inputId = "incr",
+                                          value = F,
+                                          label = strong("Decreasing"))
                                   ))
                         ),
                         tabItem(tabName = "set",
@@ -279,7 +283,8 @@ ui <- dashboardPage(skin ="green",
                       tabItem(tabName = "NMDS",
                               fluidRow(
                                 box(status = "success", width = 4, title = "Settings", solidHeader = T, uiOutput("moreControls_3"),
-                                    tags$hr(), noUiSliderInput("score", "Filter by a minimum value of reading (SC sums in a column)", 15, 5000, 100)),
+                                    tags$hr(), noUiSliderInput("score", "Filter by a minimum value of reading (SC sums in a column)", 15, 5000, 100),
+                                    tags$hr(), fileInput(inputId = "supp", label ="Add a complementary csv table", accept = c(".csv"))), 
                                 
                                 box(status = "success", title = "Non-metric multidimensionnal scaling", width = 8,
                                     tabBox(height = "100%", width = "100%",
@@ -368,7 +373,7 @@ server <- function(input, output, session){
   })
   
   output$upsetR = renderPlot({
-    make_upset(finaldata(), samplelist(), input$organismID, input$order) 
+    make_upset(finaldata(), samplelist(), input$organismID, input$order, input$incr) 
   })
   
   output$samplecontrol = renderUI({
@@ -416,7 +421,7 @@ server <- function(input, output, session){
   })
   
   output$MDS = renderPlot({
-    make_nMDSbis(finaldata(), input$organismID_3, input$score)
+    make_nMDSbis(finaldata(), input$organismID_3, input$score, input$supp)
   })
   
   output$barplot = renderPlot({
