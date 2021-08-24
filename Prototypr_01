@@ -22,7 +22,7 @@ library(viridis)
 library(hrbrthemes)
 library(MASS)
 library(shinydlplot)
-library(ggvenn)
+library(RVenn)
 library(shinyalert)
 
 #####################   Functions   ########################
@@ -85,6 +85,71 @@ make_upset = function(data, listof_sample, species, order, pace){
         text.scale = c(2, 2, 1, 1, 1.2, 2), main.bar.color = "steelblue")
 }
 
+## Make intersection & union
+
+get_prot_of_sample = function(data, inputsample){
+  data %>% 
+    dplyr::filter(sample == inputsample) %>% 
+    dplyr::filter(SC > 0) %>%
+    dplyr::select(`Protein accession`) %>% 
+    as.vector -> tmp
+  return(tmp$`Protein accession`)
+}
+
+make_inter = function(data,list_of_sample, wanted_sample, species){
+  obj = list()
+  for (i in 1:length(list_of_sample)){
+    obj[[length(obj)+1]] <- get_prot_of_sample(data, list_of_sample[i])
+    names(obj)[i] = samples[i]
+  } 
+  Set1 = obj[names(obj) %in% wanted_sample]
+  toinclude = as.data.frame(RVenn::overlap(Venn(Set1)))
+  data %>% 
+    filter(sample == wanted_sample) %>%
+    filter(`Protein accession` == toinclude[,1]) %>%
+    filter(Organism == species) -> SET1
+  return(SET1[,c(1,2,7,8,9)])
+}
+
+make_interbis = function(data,list_of_sample, wanted_sample, species){
+  obj = list()
+  for (i in 1:length(list_of_sample)){
+    obj[[length(obj)+1]] <- get_prot_of_sample(data, list_of_sample[i])
+    names(obj)[i] = samples[i]
+  } 
+  Set2 = obj[!names(obj) %in% wanted_sample]
+  toexclude = as.data.frame(RVenn::unite(Venn(Set2)))
+  data %>% 
+    filter(`Protein accession` == toexclude[,1]) %>%
+    filter(grepl(species,Organism)) -> SET2
+  return(SET2[,c(1,2,7,8,9)])
+}
+
+make_interter = function(data,list_of_sample, wanted_sample, species){
+  obj = list()
+  for (i in 1:length(list_of_sample)){
+    obj[[length(obj)+1]] <- get_prot_of_sample(data, list_of_sample[i])
+    names(obj)[i] = samples[i]
+  } 
+  Set1 = obj[names(obj) %in% wanted_sample]  
+  Set2 = obj[!names(obj) %in% wanted_sample]
+  toinclude = as.data.frame(RVenn::overlap(Venn(Set1)))
+  data %>% 
+    filter(sample == wanted_sample) %>%
+    filter(`Protein accession` == toinclude[,1]) %>%
+    filter(Organism == species) -> SET1
+  toexclude = as.data.frame(RVenn::unite(Venn(Set2)))
+  data %>% 
+    filter(`Protein accession` == toexclude[,1]) %>%
+    filter(grepl(species,Organism)) -> SET2
+  todiff = as.data.frame(setdiff(SET1,SET2))
+  data %>% 
+    filter(`Protein accession` == todiff) %>%
+    filter(grepl(species,Organism)) %>%
+    unique()-> SET3
+  return(SET3[,c(1,2,7,8,9)])
+}
+
 ## Make a heatmap ##
 
 make_heatmap = function(data, listof_sample, species, min, max){ 
@@ -135,19 +200,34 @@ make_nMDS = function(data, species, score){
   stressplot(mds)
 }
 
-make_nMDSbis = function(data, species, score, supp){
+make_nMDSbis = function(data, species, score){
   data %>% 
     filter(`#specific peptides`>1) %>% 
-    filter(grepl(species,Organism)) %>% 
+    dplyr::filter(grepl(species,Organism)) %>% 
     dplyr::select(`Protein accession`,sample,SC) %>% 
     pivot_wider(id_cols = `Protein accession`,names_from=sample,values_from=SC) %>% 
     mutate(SCsums = rowSums(across(where(is.numeric)))) %>% filter(SCsums > score) %>%
     dplyr::select(-`Protein accession`,-SCsums) -> data_mds
   metaMDS(data_mds) -> mds
-  mds$species %>% as.data.frame %>% mutate(sample = rownames(mds$species)) %>% 
-    ggplot(aes(x=MDS1, y=MDS2, color= supp$Position, shape = supp$TCA)) + 
-    geom_point(size=6) + geom_label_repel(aes(x=MDS1,y=MDS2,label=sample))+ scale_colour_discrete("Position") +
-    scale_shape_discrete("TCA") + theme_gray()
+  mds$species %>% as.data.frame %>% mutate(sample = rownames(mds$species)) -> MDS
+  ggplot(MDS, aes(x=MDS1, y=MDS2)) + geom_point(size =3) + 
+    geom_label_repel(aes(x=MDS1,y=MDS2,label=sample)) + 
+    theme_gray()
+}
+
+make_nMDSter = function(data, species, score, supp){
+    data %>% 
+      filter(`#specific peptides`>1) %>% 
+      dplyr::filter(grepl(species,Organism)) %>% 
+      dplyr::select(`Protein accession`,sample,SC) %>% 
+      pivot_wider(id_cols = `Protein accession`,names_from=sample,values_from=SC) %>% 
+      mutate(SCsums = rowSums(across(where(is.numeric)))) %>% filter(SCsums > score) %>%
+      dplyr::select(-`Protein accession`,-SCsums) -> data_mds
+    metaMDS(data_mds) -> mds
+    mds$species %>% as.data.frame %>% mutate(sample = rownames(mds$species)) -> MDS
+    ggplot(MDS, aes(x=MDS1, y=MDS2, color= supp$Position, shape = supp$TCA)) + 
+      geom_point(size=3) + geom_label_repel(aes(x=MDS1,y=MDS2,label=sample))+ scale_colour_discrete("Position") +
+      scale_shape_discrete("TCA") + theme_gray()
 }
 
 ## Make a PCA   ##
@@ -241,7 +321,7 @@ ui <- dashboardPage(skin ="green",
                                              tags$style(".progress-bar {background-color: #5e437;}"),
                                              
                                              tags$hr(),
-                                             actionBttn("parse", "Parse dataset for analysis"), align = "center"
+                                             actionBttn("parse", "Parse dataset for analysis", style ="pill"), align = "center"
                                          ),
                                          box(status = "success", width = '100%', dataTableOutput("contents"), title = "Data overview", solidHeader = T))
                         ),
@@ -263,18 +343,18 @@ ui <- dashboardPage(skin ="green",
                         ),
                         tabItem(tabName = "set",
                                 fluidRow(
-                                  box(status = "success", title = "Details", solidHeader = T, plotOutput("venn"), tags$hr(), align = 'center',
-                                      downloadBttn('dwl1', label = "Download Plot", style = "jelly", color = "warning")),
+                                  box(status = "success", title = "Details",width ="100%", solidHeader = T, dataTableOutput("connexion"), tags$hr(), align = 'center',
+                                      downloadBttn('dwl1', label = "Download Plot", style = "gradient", color = "warning")),
                                   
-                                  box(status = "success", title = "Select samples to compare", uiOutput("samplecontrol"), 
+                                  box(status = "success", title = "Select samples to compare", width = "100%", uiOutput("samplecontrol"), 
                                   tags$hr(), pickerInput("option", label = "View interactions",
                                                          choices = c("Intersection", "Union","Exclusive"),
-                                                         choicesOpt = list(icon = c("handshake-o","random", "exclamation"))), uiOutput("connexion")))
+                                                         choicesOpt = list(icon = c(icon("handshake-o"), icon("random"), icon("exclamation"))))))
                         ),
                         tabItem(tabName = "heatmap",
                                 fluidRow(
                                   box(status = "success", title = "Links and differences within samples", plotlyOutput("heat"),tags$hr(),align = 'center',
-                                           downloadBttn('dwl2', label = "Download Plot", style = "jelly", color = "warning")),
+                                           downloadBttn('dwl2', label = "Download Plot", style = "gradient", color = "warning")),
                                       
                                   box(status = "success",uiOutput("moreControls_2"), tags$hr(),
                                        noUiSliderInput("limit", "Filter the protein by a minimum Mascot score", 15, 3000, c(2000, 2800))))
@@ -284,19 +364,20 @@ ui <- dashboardPage(skin ="green",
                               fluidRow(
                                 box(status = "success", width = 4, title = "Settings", solidHeader = T, uiOutput("moreControls_3"),
                                     tags$hr(), noUiSliderInput("score", "Filter by a minimum value of reading (SC sums in a column)", 15, 5000, 100),
-                                    tags$hr(), fileInput(inputId = "supp", label ="Add a complementary csv table", accept = c(".csv"))), 
+                                    tags$hr(), fileInput(inputId = "supp", label ="Add a complementary csv table", accept = c(".csv")), align = "center",
+                                    actionBttn(inputId = "complement", label = "Add to plot", icon = icon("plus"), style = "gradient", color = "success")), 
                                 
                                 box(status = "success", title = "Non-metric multidimensionnal scaling", width = 8,
                                     tabBox(height = "100%", width = "100%",
                                            
                                     tabPanel(type = "tabs", title = "Quality of stress optimization", plotOutput("stress"),
                                              tags$hr(),align = 'center',
-                                             downloadBttn('dwl3', label = "Download Plot", style = "jelly", color = "warning")
+                                             downloadBttn('dwl3', label = "Download Plot", style = "gradient", color = "warning")
                                     ),
                                     
                                     tabPanel(type = "tabs", title = "Graphical display", plotOutput("MDS"),
                                              tags$hr(),align = 'center',
-                                             downloadBttn('dwl4', label = "Download Plot", style = "jelly", color = "warning")
+                                             downloadBttn('dwl4', label = "Download Plot", style = "gradient", color = "warning")
                                              )))
                       )),
                       
@@ -306,17 +387,17 @@ ui <- dashboardPage(skin ="green",
                                                                
                                                                tabPanel(type = "tabs", title = "Variance explained by dimensions", plotOutput("barplot"), 
                                                                         tags$hr(),align = 'center',
-                                                                        downloadBttn('dwl5', label = "Download Plot", style = "jelly", color = "warning")
+                                                                        downloadBttn('dwl5', label = "Download Plot", style = "gradient", color = "warning")
                                                                         ),
                                                                
                                                                tabPanel(type = "tabs", title = "Circle of representation quality", plotOutput("circle"),
                                                                         tags$hr(),align = 'center',
-                                                                        downloadBttn('dwl6', label = "Download Plot", style = "jelly", color = "warning")
+                                                                        downloadBttn('dwl6', label = "Download Plot", style = "gradient", color = "warning")
                                                                         ),
                                                                
                                                                tabPanel(type = "tabs", title = "Principal component analysis", plotlyOutput("ACP"),
                                                                         tags$hr(), h4(strong("Display ellipses :")), switchInput("off"),tags$hr(), align = 'center',
-                                                                        downloadBttn('dwl7', label = "Download Plot", style = "jelly", color = "warning")
+                                                                        downloadBttn('dwl7', label = "Download Plot", style = "gradient", color = "warning")
                                                                         ))))
                       ),
                       
@@ -345,12 +426,15 @@ ui <- dashboardPage(skin ="green",
 
 server <- function(input, output, session){
   
+  ## Hide tabs
+  
+
   ## Reactive objects
   
   finaldata = reactiveVal(data.frame())
   samplelist = reactiveVal(c())
   organism = reactiveVal(c())
-  
+
   ## Pop-up window
   
   observeEvent(input$contact,{
@@ -378,26 +462,23 @@ server <- function(input, output, session){
   
   output$samplecontrol = renderUI({
     tagList(
-      awesomeCheckboxGroup("control", "Select at least two samples", status = "success", choices = samplelist(), selected = NULL)
+      awesomeRadio("organismID_4","Choose species:",organism()),
+      awesomeCheckboxGroup("control", "Select at least two samples", status = "success", choices = samplelist(), selected = c(samplelist()[1], samplelist()[2]))
     )
   })
   
-  output$connexion = renderUI({
+  output$connexion = renderDataTable({
     if (input$option == "Intersection"){
-      Set1
+      make_inter(finaldata(), samplelist(), input$control, input$organismID_4)
     }
     else if (input$option == "Union"){
-      Set2
+      make_interbis(finaldata(), samplelist(), input$control, input$organismID_4)
     }
     else {
-      Set3
+      make_interter(finaldata(), samplelist(), input$control, input$organismID_4)
     }
   })
-  
-  output$venn = renderPlot({
-    ggplotly(ggvenn(list(set1), fill_color = c("#0073C2FF", "#EFC000FF", "#868686FF", "#CD534CFF"),
-           stroke_size = 0.5, set_name_size = 4))
-  })
+
   
   output$moreControls_2 = renderUI({
     tagList(
@@ -420,9 +501,17 @@ server <- function(input, output, session){
     make_nMDS(finaldata(), input$organismID_3, input$score)
   })
   
+  observe({
   output$MDS = renderPlot({
-    make_nMDSbis(finaldata(), input$organismID_3, input$score, input$supp)
-  })
+    make_nMDSbis(finaldata(), input$organismID_3, input$score)})
+    })
+
+  
+  observeEvent(input$complement,{
+  output$MDS = renderPlot({
+    make_nMDSter(finaldata(), input$organismID_3, input$score, supp)})
+ })
+
   
   output$barplot = renderPlot({
     make_pca_1(finaldata())
