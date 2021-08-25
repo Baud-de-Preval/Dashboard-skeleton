@@ -260,18 +260,22 @@ make_pca_2 = function(data){
                gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = T, labelsize = 3)
 }
 
-make_pca_3 = function(data, ellipse){
+make_pca_3 = function(data, species, list_of_sample, ellipses){
+  data %>%
+    dplyr::select(NSAF, `Protein accession`,sample,Organism) %>%
+    pivot_wider(names_from = sample, values_from = NSAF) -> cpa_data
+  row.names(cpa_data) <- cpa_data$`Protein accession`
+  PCA(cpa_data, scale.unit=TRUE, ncp=5, quali.sup=c(1:2), graph=F) -> res.pca
   b <- fviz_pca_biplot(res.pca,
                        col.ind = cpa_data$Organism, palette = "jco",  
-                       addEllipses = ellipse,label = "var", tooltip =c("text"), 
+                       addEllipses = ellipses, label = " var", 
                        col.var = "black", repel = TRUE, labelsize = 2,
                        legend.title = "Organisms :")
   ggly <- ggplotly(b)
   bggly <- plotly_build(ggly)
-  bggly$x$data[[1]]$text <- 
-    with(b$data, paste0("Protein: ", name))
-  bggly$x$data[[2]]$text <-
-    with(b$data, paste0("Protein: ",name ))
+  for (k in 1:length(species)){
+    bggly$x$data[[k]]$text <- with(b$data, paste0("Protein: ", name))
+  }
   bggly 
 }
 
@@ -529,10 +533,10 @@ server <- function(input, output, session){
   
   output$ACP = renderPlotly({
     if (input$off == FALSE){
-    make_pca_3(finaldata(), FALSE)
+    make_pca_3(finaldata(), organism(), samplelist(), FALSE)
       }
     else {
-    make_pca_3(finaldata(), TRUE)
+    make_pca_3(finaldata(),organism(), samplelist(), TRUE)
     }
   })
 
