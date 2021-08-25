@@ -69,6 +69,13 @@ parse_protein_file = function(filepath){
   return(finaldata)
 }
 
+### Read the supplementary file ###
+
+parse_supp_file = function(file){
+  otherdata = readr::read_csv(file, col_names = T)
+  return(otherdata)
+  }
+
 ## Make an UpsetR ##
 
 make_upset = function(data, listof_sample, species, order, pace){
@@ -100,7 +107,7 @@ make_inter = function(data,list_of_sample, wanted_sample, species){
   obj = list()
   for (i in 1:length(list_of_sample)){
     obj[[length(obj)+1]] <- get_prot_of_sample(data, list_of_sample[i])
-    names(obj)[i] = samples[i]
+    names(obj)[i] = list_of_sample[i]
   } 
   Set1 = obj[names(obj) %in% wanted_sample]
   toinclude = as.data.frame(RVenn::overlap(Venn(Set1)))
@@ -115,7 +122,7 @@ make_interbis = function(data,list_of_sample, wanted_sample, species){
   obj = list()
   for (i in 1:length(list_of_sample)){
     obj[[length(obj)+1]] <- get_prot_of_sample(data, list_of_sample[i])
-    names(obj)[i] = samples[i]
+    names(obj)[i] = list_of_sample[i]
   } 
   Set2 = obj[!names(obj) %in% wanted_sample]
   toexclude = as.data.frame(RVenn::unite(Venn(Set2)))
@@ -129,7 +136,7 @@ make_interter = function(data,list_of_sample, wanted_sample, species){
   obj = list()
   for (i in 1:length(list_of_sample)){
     obj[[length(obj)+1]] <- get_prot_of_sample(data, list_of_sample[i])
-    names(obj)[i] = samples[i]
+    names(obj)[i] = list_of_sample[i]
   } 
   Set1 = obj[names(obj) %in% wanted_sample]  
   Set2 = obj[!names(obj) %in% wanted_sample]
@@ -344,7 +351,7 @@ ui <- dashboardPage(skin ="green",
                         tabItem(tabName = "set",
                                 fluidRow(
                                   box(status = "success", title = "Details",width ="100%", solidHeader = T, dataTableOutput("connexion"), tags$hr(), align = 'center',
-                                      downloadBttn('dwl1', label = "Download Plot", style = "gradient", color = "warning")),
+                                      downloadBttn('dwl1', label = "Download Table", style = "gradient", color = "warning")),
                                   
                                   box(status = "success", title = "Select samples to compare", width = "100%", uiOutput("samplecontrol"), 
                                   tags$hr(), pickerInput("option", label = "View interactions",
@@ -364,7 +371,7 @@ ui <- dashboardPage(skin ="green",
                               fluidRow(
                                 box(status = "success", width = 4, title = "Settings", solidHeader = T, uiOutput("moreControls_3"),
                                     tags$hr(), noUiSliderInput("score", "Filter by a minimum value of reading (SC sums in a column)", 15, 5000, 100),
-                                    tags$hr(), fileInput(inputId = "supp", label ="Add a complementary csv table", accept = c(".csv")), align = "center",
+                                    tags$hr(), fileInput(inputId = "supp", label ="Add a complementary csv table", accept = c(".csv", ".ods")), align = "center",
                                     actionBttn(inputId = "complement", label = "Add to plot", icon = icon("plus"), style = "gradient", color = "success")), 
                                 
                                 box(status = "success", title = "Non-metric multidimensionnal scaling", width = 8,
@@ -375,7 +382,7 @@ ui <- dashboardPage(skin ="green",
                                              downloadBttn('dwl3', label = "Download Plot", style = "gradient", color = "warning")
                                     ),
                                     
-                                    tabPanel(type = "tabs", title = "Graphical display", plotOutput("MDS"),
+                                    tabPanel(type = "tabs", title = "Graphical display", plotOutput("MDS"), tableOutput("error"),
                                              tags$hr(),align = 'center',
                                              downloadBttn('dwl4', label = "Download Plot", style = "gradient", color = "warning")
                                              )))
@@ -434,6 +441,7 @@ server <- function(input, output, session){
   finaldata = reactiveVal(data.frame())
   samplelist = reactiveVal(c())
   organism = reactiveVal(c())
+  otherdata = reactiveVal(data.frame())
 
   ## Pop-up window
   
@@ -479,7 +487,6 @@ server <- function(input, output, session){
     }
   })
 
-  
   output$moreControls_2 = renderUI({
     tagList(
       awesomeRadio("organismID_2","Choose species:",organism())
@@ -500,18 +507,17 @@ server <- function(input, output, session){
   output$stress = renderPlot({
     make_nMDS(finaldata(), input$organismID_3, input$score)
   })
-  
+    
   observe({
-  output$MDS = renderPlot({
-    make_nMDSbis(finaldata(), input$organismID_3, input$score)})
+    output$MDS = renderPlot({
+      make_nMDSbis(finaldata(), input$organismID_3, input$score)})
     })
-
   
   observeEvent(input$complement,{
-  output$MDS = renderPlot({
-    make_nMDSter(finaldata(), input$organismID_3, input$score, supp)})
- })
-
+    otherdata(parse_supp_file(input$supp$datapath))
+    output$MDS = renderPlot({ 
+      make_nMDSter(finaldata(), input$organismID_3, input$score, otherdata())})
+  })
   
   output$barplot = renderPlot({
     make_pca_1(finaldata())
@@ -533,20 +539,37 @@ server <- function(input, output, session){
   ## Download plots
   
   output$downloadData <- downloadHandler(
-  filename = function() {
-    paste('List_of_Protein', Sys.Date(), '.csv', sep='')
+    filename = function(){
+    paste0(paste0("Example-", Sys.Date()), ".xlsx")
   },
- content = function(con) {
-    write_excel_csv2(List_of_Protein, con)
- }
-)
+  content = function(file) {
+    write_excel_csv(regPlot, file=file)
+  })
   
   output$dwl1 <- downloadHandler(
     filename = function() {
-      paste("Heatmap", ".png", sep="")
+      paste("Intersection", ".pdf", sep="")
     },
     content = function(file) {
-      png(make_heatmap(finaldata(), samplelist(), input$organismID_2, input$limit[1], input$limit[2]))
+      if (input$option == "Intersection"){
+        pdf(make_inter(finaldata(), samplelist(), input$control, input$organismID_4), file = file)
+      }
+      else if (input$option == "Union"){
+        pdf(make_interbis(finaldata(), samplelist(), input$control, input$organismID_4),file = file)
+      }
+      else {
+        pdf(make_interter(finaldata(), samplelist(), input$control, input$organismID_4),file = file)
+      }
+    }
+  )
+  
+  output$dwl4 <- downloadHandler(
+    filename = function(){
+      paste("Stressplot", ".pdf", sep = "")
+    },
+    content = function(){
+      device <- function(..., width, height) grDevices::png(..., width = width, height = height, res = 300, units = "in")
+      ggsave(file, plot = make_nMDS(finaldata(), input$organismID_3, input$score), device = device)
     }
   )
   
