@@ -261,7 +261,7 @@ make_pca_2 = function(data){
                gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = T, labelsize = 3)
 }
 
-make_pca_3 = function(data, species, list_of_sample){
+make_pca_3 = function(data, species, list_of_sample, ellipses){
   data %>%
     dplyr::select(NSAF, `Protein accession`,sample,Organism) %>%
     pivot_wider(names_from = sample, values_from = NSAF) -> cpa_data
@@ -271,7 +271,7 @@ make_pca_3 = function(data, species, list_of_sample){
                    gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = T, labelsize = 3)
   b <- fviz_pca_biplot(res.pca,
                        col.ind = cpa_data$Organism, palette = "jco",  
-                       addEllipses = F, label = " var", 
+                       addEllipses = ellipses, label = " var", 
                        col.var = a$data$name, repel = TRUE, labelsize = 2,
                        legend.title = "Organisms :")
   ggly <- ggplotly(b)
