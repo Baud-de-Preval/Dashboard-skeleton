@@ -204,7 +204,8 @@ make_nMDS = function(data, species, score){
     mutate(SCsums = rowSums(across(where(is.numeric)))) %>% filter(SCsums > score) %>%
     dplyr::select(-`Protein accession`,-SCsums) -> data_mds
   metaMDS(data_mds) -> mds
-  stressplot(mds)
+  stressplot(mds) 
+  return(stressplot(mds))
 }
 
 make_nMDSbis = function(data, species, score){
@@ -232,9 +233,9 @@ make_nMDSter = function(data, species, score, supp){
       dplyr::select(-`Protein accession`,-SCsums) -> data_mds
     metaMDS(data_mds) -> mds
     mds$species %>% as.data.frame %>% mutate(sample = rownames(mds$species)) -> MDS
-    ggplot(MDS, aes(x=MDS1, y=MDS2, color= supp$Position, shape = supp$TCA)) + 
-      geom_point(size=3) + geom_label_repel(aes(x=MDS1,y=MDS2,label=sample))+ scale_colour_discrete("Position") +
-      scale_shape_discrete("TCA") + theme_gray()
+    ggplot(MDS, aes(x=MDS1, y=MDS2, color= unlist(supp[,2]), shape = unlist(supp[,3]))) + 
+      geom_point(size=3) + geom_label_repel(aes(x=MDS1,y=MDS2,label=sample))+ 
+      labs(shape=colnames(supp[3]),col=colnames(supp)[2]) + theme_gray()
 }
 
 ## Make a PCA   ##
@@ -260,16 +261,18 @@ make_pca_2 = function(data){
                gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = T, labelsize = 3)
 }
 
-make_pca_3 = function(data, species, list_of_sample, ellipses){
+make_pca_3 = function(data, species, list_of_sample){
   data %>%
     dplyr::select(NSAF, `Protein accession`,sample,Organism) %>%
     pivot_wider(names_from = sample, values_from = NSAF) -> cpa_data
   row.names(cpa_data) <- cpa_data$`Protein accession`
   PCA(cpa_data, scale.unit=TRUE, ncp=5, quali.sup=c(1:2), graph=F) -> res.pca
+  a <-fviz_pca_var(res.pca, col.var = "contrib", 
+                   gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = T, labelsize = 3)
   b <- fviz_pca_biplot(res.pca,
                        col.ind = cpa_data$Organism, palette = "jco",  
-                       addEllipses = ellipses, label = " var", 
-                       col.var = "black", repel = TRUE, labelsize = 2,
+                       addEllipses = F, label = " var", 
+                       col.var = a$data$name, repel = TRUE, labelsize = 2,
                        legend.title = "Organisms :")
   ggly <- ggplotly(b)
   bggly <- plotly_build(ggly)
@@ -568,11 +571,10 @@ server <- function(input, output, session){
   )
   
   output$dwl4 <- downloadHandler(
-    filename = function(){
-      paste("Stressplot", ".pdf", sep = "")
-    },
+   filename = "Stressplot.png",
     content = function(){
       device <- function(..., width, height) grDevices::png(..., width = width, height = height, res = 300, units = "in")
+      pdf()
       ggsave(file, plot = make_nMDS(finaldata(), input$organismID_3, input$score), device = device)
     }
   )
