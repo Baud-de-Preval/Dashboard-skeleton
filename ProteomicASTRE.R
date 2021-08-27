@@ -74,7 +74,29 @@ parse_protein_file = function(filepath){
 parse_supp_file = function(file){
   otherdata = readr::read_csv(file, col_names = T)
   return(otherdata)
+}
+
+## Make hist ##
+
+make_hist = function(data, value, math){
+  data %>%
+    dplyr::select(sample, value, Organism) %>%
+    as.data.frame() -> histdata2
+  
+  count(histdata2, Organism, sample) -> N2
+  View(N2)
+  p <- histdata2 %>%
+    ggplot() +
+    geom_boxplot(aes(x= Organism, y =get(value), fill = Organism), size = 0.2, width = 0.2) +
+    geom_text(data= N ,aes(x= Organism, y = n, label = n), position=position_dodge(width=0.6), vjust=1.5) +
+    theme_bw() + facet_wrap(~ sample)
+  if (math == FALSE){
+    return(p + ylab(paste(value)))
   }
+  else {
+    return(p + scale_y_log10() + ylab(paste("Log", value, sep = "")))
+  }
+}
 
 ## Make an UpsetR ##
 
@@ -87,9 +109,9 @@ make_upset = function(data, listof_sample, species, order, pace){
     pivot_wider(id_cols = `Protein accession`,names_from=sample,values_from=SC)  %>%
     as.data.frame -> updata 
   updata[is.na(updata)] <- 0
-  upset(updata, nsets = length(listof_sample), order.by = order, decreasing = pace, number.angles = 30, point.size = 4, line.size = 1.5, 
+  return(upset(updata, nsets = length(listof_sample), order.by = order, decreasing = pace, number.angles = 30, point.size = 4, line.size = 1.5, 
         mainbar.y.label = "Protein Intersections", sets.x.label = "Protein per sample", 
-        text.scale = c(2, 2, 1, 1, 1.2, 2), main.bar.color = "steelblue")
+        text.scale = c(2, 2, 1, 1, 1.2, 2), main.bar.color = "steelblue"))
 }
 
 ## Make intersection & union
@@ -159,7 +181,7 @@ make_interter = function(data,list_of_sample, wanted_sample, species){
 
 ## Make a heatmap ##
 
-make_heatmap = function(data, listof_sample, species, min, max){ 
+make_heatmap = function(data, listof_sample, species, min, max, norm){ 
   data %>%
     filter(`Mascot score` > min & `Mascot score` < max) %>%
     filter(sample %in% listof_sample) %>%
@@ -174,7 +196,7 @@ make_heatmap = function(data, listof_sample, species, min, max){
                  dendrogram = T,
                  xlab = "", ylab = "", 
                  main = "",
-                 scale = "column",
+                 scale = norm,
                  margins = c(0,50,NA,0),
                  grid_color = "white",
                  grid_width = 0.0001,
@@ -204,7 +226,6 @@ make_nMDS = function(data, species, score){
     mutate(SCsums = rowSums(across(where(is.numeric)))) %>% filter(SCsums > score) %>%
     dplyr::select(-`Protein accession`,-SCsums) -> data_mds
   metaMDS(data_mds) -> mds
-  stressplot(mds) 
   return(stressplot(mds))
 }
 
@@ -218,9 +239,9 @@ make_nMDSbis = function(data, species, score){
     dplyr::select(-`Protein accession`,-SCsums) -> data_mds
   metaMDS(data_mds) -> mds
   mds$species %>% as.data.frame %>% mutate(sample = rownames(mds$species)) -> MDS
-  ggplot(MDS, aes(x=MDS1, y=MDS2)) + geom_point(size =3) + 
+  return(ggplot(MDS, aes(x=MDS1, y=MDS2)) + geom_point(size =3) + 
     geom_label_repel(aes(x=MDS1,y=MDS2,label=sample)) + 
-    theme_gray()
+    theme_gray())
 }
 
 make_nMDSter = function(data, species, score, supp){
@@ -233,9 +254,10 @@ make_nMDSter = function(data, species, score, supp){
       dplyr::select(-`Protein accession`,-SCsums) -> data_mds
     metaMDS(data_mds) -> mds
     mds$species %>% as.data.frame %>% mutate(sample = rownames(mds$species)) -> MDS
-    ggplot(MDS, aes(x=MDS1, y=MDS2, color= unlist(supp[,2]), shape = unlist(supp[,3]))) + 
+    return(ggplot(MDS, aes(x=MDS1, y=MDS2, color= unlist(supp[,2]), shape = unlist(supp[,3]))) + 
       geom_point(size=3) + geom_label_repel(aes(x=MDS1,y=MDS2,label=sample))+ 
-      labs(shape=colnames(supp[3]),col=colnames(supp)[2]) + theme_gray()
+      labs(shape=colnames(supp[3]),col=colnames(supp)[2]) + theme_gray())
+
 }
 
 ## Make a PCA   ##
@@ -248,6 +270,7 @@ make_pca_1 = function(data){
   row.names(cpa_data) <- cpa_data$`Protein accession`
   PCA(cpa_data, scale.unit=TRUE, ncp=5, quali.sup=c(1:2), graph=F) -> res.pca
   fviz_eig(res.pca, addlabels = TRUE, ylim = c(0, 50))
+  
 }
 
 make_pca_2 = function(data){
@@ -257,8 +280,8 @@ make_pca_2 = function(data){
   cpa_data[complete.cases(cpa_data), ] -> cpa_data
   row.names(cpa_data) <- cpa_data$`Protein accession`
   PCA(cpa_data, scale.unit=TRUE, ncp=5, quali.sup=c(1:2), graph=F) -> res.pca
-  fviz_pca_var(res.pca, col.var = "contrib", 
-               gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = T, labelsize = 3)
+  return(fviz_pca_var(res.pca, col.var = "contrib", 
+               gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"), repel = T, labelsize = 3))
 }
 
 make_pca_3 = function(data, species, list_of_sample, ellipses){
@@ -287,7 +310,7 @@ make_pca_3 = function(data, species, list_of_sample, ellipses){
 ui <- dashboardPage(skin ="green", 
                     dashboardHeader(title = tags$a(href='https://umr-astre.cirad.fr/', windowTitle =" Neethling Prot",
                                                    tags$img(src='https://www.gds974.com/wp-content/uploads/2018/02/logo-cirad-avec-texte.jpg',  height='80',width='200')),
-                                    tags$li(class="dropdown", tags$a(href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/Prototypr_01", icon("github"), "Source Code", target="_blank")),
+                                    tags$li(class="dropdown", tags$a(href="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/ProteomicASTRE.R", icon("github"), "Source Code", target="_blank")),
                                     tags$li(class ="dropdown", tags$a(href ='https://umr-astre.cirad.fr/publications/publications-scientifiques/flux-inra-et-cirad/pub.-agritrop-astre/risk-of-introduction-of-lumpy-skin-disease-in-france-by-the-import-of-vectors-in-animal-trucks', icon("info"))),
                                     tags$li(class = "dropdown", useShinyalert(), dropdownButton(inputId = "contact", label = "",status = "success", icon = icon('envelope')) 
                                             )),
@@ -295,6 +318,7 @@ ui <- dashboardPage(skin ="green",
                     dashboardSidebar(sidebarMenu(
                       menuItem("Welcome page", tabName = "welcome", icon = icon("home")), 
                       menuItem("Data uploader", tabName = "data_upload", icon = icon("upload")),
+                      menuItem("Stats", tabName = "stats", icon =icon("eye")),
                       menuItem("Samples intersection", tabName = "inter", icon = icon("exchange"),
                                menuSubItem("Overview", tabName = "view", icon =icon("vcard-o")),
                                menuSubItem("Specific sets", tabName = "set", icon = icon("braille"))),
@@ -320,14 +344,13 @@ ui <- dashboardPage(skin ="green",
                                   
                                   box(status = "success", width ="100%", title = h3("Experiments"), tags$hr(), tags$img(), tags$hr(),
                                       "This Shiny App has been developed during a three months internship at", strong("CIRAD"), "concomitantly with a study
-                                      on Neethling virus (see paper at this link : ). But the App is designed to treat any data obtained from 
+                                      on Neethling virus (see paper at this :", tags$a(href ="", "link") ,"). But the App is designed to treat any data obtained from 
                                       mass spectrometry including several organisms. It might still receive updates in the future."))
                         ),
                         tabItem(tabName = "data_upload",
                                 fluidRow(
-                                  box(status = "success", width = '100%', "First, please make sure that your file is well parsed. Here is an",
-                                      downloadLink('downloadData', 'example'), "of a tidy file. 
-                                      The fist x columns must be in the upload file then each sample must take ", strong("a three colums space"),". Once you have the right format, please upload the file :"),
+                                  box(status = "success", width = '100%', "You can find  here an ",
+                                      tags$a('example', href ="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/data_exemple/Li2D_MS21-001_Table%20S2_List%20of%20Proteins.xlsx"), "of a uploadable file. Once your file have the right format, please upload it :"),
                                 
                                          box(status = "success",width = '100%', fileInput(inputId = "filedata",
                                                                                           label = "Choose xlsx file",
@@ -339,9 +362,24 @@ ui <- dashboardPage(skin ="green",
                                          ),
                                          box(status = "success", width = '100%', dataTableOutput("contents"), title = "Data overview", solidHeader = T))
                         ),
+                        tabItem(tabName = "stats",
+                                fluidRow(
+                                 box(status = "success", title = "Distribution between samples", width = "80%", plotOutput("Hist"), tags$hr(), align ="center",
+                                     downloadBttn('dwlstats', label = "Download Plot", style = "gradient", color = "warning")),
+                          
+                                 box(status = "success", title = "Settings", solidHeader = T, align = "center", tagList(
+                                  radioGroupButtons(
+                                    inputId = "num",
+                                    label = "Select values :",
+                                    choices = c("SC", "NSAF"),
+                              selected = "SC"), tags$hr(),
+                           strong("Apply log on the y axis :"), switchInput(inputId = "log", onStatus = "success", offStatus = "danger"),
+                           )))
+                          ),
                         tabItem(tabName = "view",
                                 fluidRow(
-                                  box(status = "success", title = "Protein in common between samples",width = '100%', solidHeader = T, plotOutput("upsetR")),
+                                  box(status = "success", title = "Protein in common between samples",width = '100%', solidHeader = T, plotOutput("upsetR"), 
+                                      tags$hr(), align ="center", downloadBttn('dwlupset', label = "Download Plot", style = "gradient", color = "warning")),
                                   
                                   box(status = "success", title = "Organism", uiOutput("moreControls")),
                                   
@@ -358,7 +396,7 @@ ui <- dashboardPage(skin ="green",
                         tabItem(tabName = "set",
                                 fluidRow(
                                   box(status = "success", title = "Details",width ="100%", solidHeader = T, dataTableOutput("connexion"), tags$hr(), align = 'center',
-                                      downloadBttn('dwl1', label = "Download Table", style = "gradient", color = "warning")),
+                                      downloadBttn('dwlset', label = "Download Table", style = "gradient", color = "warning")),
                                   
                                   box(status = "success", title = "Select samples to compare", width = "100%", uiOutput("samplecontrol"), 
                                   tags$hr(), pickerInput("option", label = "View interactions",
@@ -367,18 +405,26 @@ ui <- dashboardPage(skin ="green",
                         ),
                         tabItem(tabName = "heatmap",
                                 fluidRow(
-                                  box(status = "success", title = "Links and differences within samples", plotlyOutput("heat"),tags$hr(),align = 'center',
-                                           downloadBttn('dwl2', label = "Download Plot", style = "gradient", color = "warning")),
+                                  box(status = "success", title = "Links and differences within samples", plotlyOutput("heat"),tags$hr(),align = 'center'),
                                       
                                   box(status = "success",uiOutput("moreControls_2"), tags$hr(),
-                                       noUiSliderInput("limit", "Filter the protein by a minimum Mascot score", 15, 3000, c(2000, 2800))))
+                                       noUiSliderInput("limit", "Filter the protein by a minimum Mascot score", 15, 3000, c(2000, 2800)),
+                                      tags$hr(), awesomeRadio(
+                                        inputId = "normal",
+                                        label = " Data transformation by:", 
+                                        choices = c("none", "row", "column"),
+                                        selected = "none",
+                                        inline = TRUE, 
+                                        checkbox = F), align ="center"
+                                  ))
                                   
                       ),
                       tabItem(tabName = "NMDS",
                               fluidRow(
                                 box(status = "success", width = 4, title = "Settings", solidHeader = T, uiOutput("moreControls_3"),
                                     tags$hr(), noUiSliderInput("score", "Filter by a minimum value of reading (SC sums in a column)", 15, 5000, 100),
-                                    tags$hr(), fileInput(inputId = "supp", label ="Add a complementary csv table", accept = c(".csv", ".ods")), align = "center",
+                                    tags$hr(), " You might add some details about your samples by upload a small file like this", tags$a(href ="https://github.com/Baud-de-Preval/Dashboard-skeleton/blob/master/data_exemple/Supplementary_file.csv" ,"one"),".",
+                                    fileInput(inputId = "supp", label ="Add a complementary csv table", accept = c(".csv", ".ods")), align = "center",
                                     actionBttn(inputId = "complement", label = "Add to plot", icon = icon("plus"), style = "gradient", color = "success")), 
                                 
                                 box(status = "success", title = "Non-metric multidimensionnal scaling", width = 8,
@@ -386,12 +432,11 @@ ui <- dashboardPage(skin ="green",
                                            
                                     tabPanel(type = "tabs", title = "Quality of stress optimization", plotOutput("stress"),
                                              tags$hr(),align = 'center',
-                                             downloadBttn('dwl3', label = "Download Plot", style = "gradient", color = "warning")
+                                             downloadBttn('dwlstressplot', label = "Download Plot", style = "gradient", color = "warning")
                                     ),
                                     
-                                    tabPanel(type = "tabs", title = "Graphical display", plotOutput("MDS"), tableOutput("error"),
-                                             tags$hr(),align = 'center',
-                                             downloadBttn('dwl4', label = "Download Plot", style = "gradient", color = "warning")
+                                    tabPanel(type = "tabs", title = "Graphical display", plotOutput("MDS"), tags$hr(), align = 'center',
+                                             downloadBttn('dwlnMDS', label = "Download Plot", style = "gradient", color = "warning")
                                              )))
                       )),
                       
@@ -401,18 +446,17 @@ ui <- dashboardPage(skin ="green",
                                                                
                                                                tabPanel(type = "tabs", title = "Variance explained by dimensions", plotOutput("barplot"), 
                                                                         tags$hr(),align = 'center',
-                                                                        downloadBttn('dwl5', label = "Download Plot", style = "gradient", color = "warning")
+                                                                        downloadBttn('dwlscreeplot', label = "Download Plot", style = "gradient", color = "warning")
                                                                         ),
                                                                
                                                                tabPanel(type = "tabs", title = "Circle of representation quality", plotOutput("circle"),
                                                                         tags$hr(),align = 'center',
-                                                                        downloadBttn('dwl6', label = "Download Plot", style = "gradient", color = "warning")
+                                                                        downloadBttn('dwlcircle', label = "Download Plot", style = "gradient", color = "warning")
                                                                         ),
                                                                
                                                                tabPanel(type = "tabs", title = "Principal component analysis", plotlyOutput("ACP"),
-                                                                        tags$hr(), h4(strong("Display ellipses :")), switchInput("off"),tags$hr(), align = 'center',
-                                                                        downloadBttn('dwl7', label = "Download Plot", style = "gradient", color = "warning")
-                                                                        ))))
+                                                                        tags$hr(), h4(strong("Display ellipses :")), switchInput("off"),tags$hr(), align = 'center')
+                                                                        )))
                       ),
                       
                       tabItem(tabName = "Info",
@@ -465,6 +509,10 @@ server <- function(input, output, session){
     output$contents = renderDataTable(finaldata()[,1:8])
   })
   
+  output$Hist = renderPlot(
+    make_hist(finaldata(), input$num, input$log)
+  )
+  
   output$moreControls = renderUI({
     tagList(
       awesomeRadio("organismID","Choose species:",organism())
@@ -501,7 +549,7 @@ server <- function(input, output, session){
   })
   
   output$heat = renderPlotly({
-    make_heatmap(finaldata(), samplelist(), input$organismID_2, input$limit[1], input$limit[2])
+    make_heatmap(finaldata(), samplelist(), input$organismID_2, input$limit[1], input$limit[2], input$normal)
     })
   
 
@@ -543,42 +591,76 @@ server <- function(input, output, session){
     }
   })
 
-  ## Download plots
+  ### Download plots ###
   
-  output$downloadData <- downloadHandler(
-    filename = function(){
-    paste0(paste0("Example-", Sys.Date()), ".xlsx")
-  },
-  content = function(file) {
-    write_excel_csv(regPlot, file=file)
-  })
+  output$dwlstats <- downloadHandler(
+    filename = "Histogram.pdf",
+    content = function(file){
+      device <- function(..., width, height) grDevices::pdf(..., width = width, height = height, res = 300, units = "in")
+      pdf(file)
+      make_hist(finaldata(), input$num, input$log)
+      dev.off()
+    })
   
-  output$dwl1 <- downloadHandler(
-    filename = function() {
-      paste("Intersection", ".pdf", sep="")
-    },
-    content = function(file) {
-      if (input$option == "Intersection"){
-        pdf(make_inter(finaldata(), samplelist(), input$control, input$organismID_4), file = file)
-      }
-      else if (input$option == "Union"){
-        pdf(make_interbis(finaldata(), samplelist(), input$control, input$organismID_4),file = file)
-      }
-      else {
-        pdf(make_interter(finaldata(), samplelist(), input$control, input$organismID_4),file = file)
-      }
+  output$dwlupset <- downloadHandler(
+    filename = "UpsetR.pdf",
+    content = function(file){
+      device <- function(..., width, height) grDevices::pdf(..., width = width, height = height, res = 300, units = "in")
+      pdf(file)
+      make_upset(finaldata(), samplelist(), input$organismID, input$order, input$incr) 
+      dev.off()
+    })
+  
+  # Dwl table
+  output$dwlset <- downloadHandler(
+    filename = "Intersect_file.csv",
+    content = function(file){
+      device <- function(..., width, height) grDevices::pdf(..., width = width, height = height, res = 300, units = "in")
+      write_csv2(file)
+      #function
+      dev.off()
     }
   )
   
-  output$dwl4 <- downloadHandler(
-   filename = "Stressplot.png",
-    content = function(){
-      device <- function(..., width, height) grDevices::png(..., width = width, height = height, res = 300, units = "in")
-      pdf()
-      ggsave(file, plot = make_nMDS(finaldata(), input$organismID_3, input$score), device = device)
-    }
-  )
+  output$dwlstressplot <- downloadHandler(
+    filename = "Stressplot.pdf",
+    content = function(file){
+      device <- function(..., width, height) grDevices::pdf(..., width = width, height = height, res = 300, units = "in")
+      pdf(file)
+      make_nMDS(finaldata(), input$organismID_3, input$score)
+      dev.off()
+    })
   
+    output$dwlnMDS <- downloadHandler(
+    filename = "nMDS.pdf",
+    content = function(file){
+      device <- function(..., width, height) grDevices::pdf(..., width = width, height = height, res = 300, units = "in")
+      pdf(file)
+      make_nMDSbis(finaldata(), input$organismID_3, input$score) 
+      observeEvent(input$complement,{
+          make_nMDSter(finaldata(), input$organismID_3, input$score, otherdata())})
+      dev.off()
+    })
+    
+    output$dwlscreeplot <- downloadHandler(
+      filename = "Screeplot.pdf",
+      content = function(file){
+        device <- function(..., width, height) grDevices::pdf(..., width = width, height = height, res = 300, units = "in")
+        pdf(file)
+        make_pca_1(finaldata())
+        dev.off()
+      })
+    
+    output$dwlcircle <- downloadHandler(
+      filename = "Circle.pdf",
+      content = function(file){
+        device <- function(..., width, height) grDevices::pdf(..., width = width, height = height, res = 300, units = "in")
+        pdf(file)
+        make_pca_2(finaldata())
+        dev.off()
+      },
+      contentType = "image/pdf"
+      )
 
   ## Download report
   
